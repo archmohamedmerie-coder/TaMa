@@ -1,8 +1,8 @@
 import * as THREE from 'three';
-import { isBlock } from './types';
-import { N, H, K, unK, voxels, commit, swapOp, pieceKeys, anchorKey, turnStep, roomOp } from './world';
+import { TYPES, isBlock } from './types';
+import { N, H, K, unK, inB, voxels, commit, cellsOf, sizeOf, type Placement, swapOp, pieceKeys, anchorKey, turnStep, roomOp } from './world';
 import { canvas, camera, ghost, setRoomPreview } from './render';
-import { pick, targetFor, planePoint } from './pick';
+import { pick, targetFor, planePoint, type Hit } from './pick';
 import { sfx } from './audio';
 import { say, undo, redo } from './ui';
 import { setFinger, clearFinger } from './hero';
@@ -16,6 +16,29 @@ export const STOREY = 3;
 export const tool: { mode: Mode; selected: string; color: number | null; room: { wall: string; storeys: number } } =
   { mode: 'build', selected: 'rose', color: 0xe5383b, room: { wall: 'white', storeys: 1 } };
 
+// Where a window or door goes when a wall is tapped: in the wall, facing out of the tapped side,
+// in the wall's own colour. Returns null when it does not fit there.
+function openingPlacement(hit: Hit, sel: string): { keys: number[]; place: Placement } | null {
+  if (hit.ground) return null;
+  const T = TYPES[sel], h = sizeOf(sel)[1], n = hit.normal;
+  let [x, y, z] = hit.cell, r: number;
+  const block = (bx: number, bz: number) => { const v = voxels.get(K(bx, y, bz)); return inB(bx, y, bz) && !!v && isBlock(v.t); };
+  if (n && n[1] === 0) r = n[2] === 1 ? 0 : n[0] === 1 ? 2 : n[2] === -1 ? 4 : 6;
+  else r = block(x - 1, z) || block(x + 1, z) ? 0 : 2;       // tapped from above: follow the run of the wall
+  // tall pieces line up with the storey: doors stand on its floor, tall windows stay under its top
+  if (h === 2) { const row = y % STOREY; y -= T.door ? row : row === 2 ? 1 : 0; }
+  const keys: number[] = [];
+  for (const c of cellsOf(x, y, z, sel, r)) {
+    if (!inB(c[0], c[1], c[2])) return null;
+    const k = K(c[0], c[1], c[2]); if (!voxels.has(k)) continue;
+    const ak = anchorKey(k), av = TYPES[voxels.get(ak)!.t];
+    if (av.cat !== 'cube' && !av.opening) return null;      // only walls and other openings give way
+    for (const q of pieceKeys(ak)) if (!keys.includes(q)) keys.push(q);
+  }
+  const w = hit.v, wt = TYPES[w.t];
+  const c = w.c != null ? w.c : wt.cat === 'cube' && w.t !== 'white' ? wt.color : undefined;
+  return { keys, place: { x, y, z, t: sel, r, c } };
+}
 function turnPiece(ak: number) {
   const v = voxels.get(ak)!, a = unK(ak);
   const op = swapOp(pieceKeys(ak), { x: a[0], y: a[1], z: a[2], t: v.t, r: ((v.r || 0) + turnStep(v.t)) % 8, c: v.c });
@@ -46,6 +69,11 @@ export function tap(px: number, py: number) {
   }
   if (tool.mode === 'turn') { if (!hit.ground) turnPiece(hit.k); return; }
   const selected = tool.selected;
+  if (TYPES[selected].opening && !hit.ground && isBlock(hit.v.t)) {
+    const o = openingPlacement(hit, selected), op = o && swapOp(o.keys, o.place);
+    if (!op) { sfx.no(); say('لا يتسع هذا هنا. جرّبي جدارًا أوسع.'); return; }
+    commit(op); sfx.place(selected); return;
+  }
   const tg = targetFor(hit, selected);
   if (!tg) return;
   if ('err' in tg) {
@@ -92,6 +120,7 @@ function hover(px: number, py: number) {
   let c: number[] | null = null;
   if (tool.mode === 'erase') { if (!hit.ground) c = hit.cell; ghost.material.color.set(0xff4d6d); }
   else if (tool.mode === 'paint' || tool.mode === 'turn') { if (!hit.ground) c = hit.cell; ghost.material.color.set(0xffffff); }
+  else if (TYPES[tool.selected].opening && !hit.ground && isBlock(hit.v.t)) { c = hit.cell; ghost.material.color.set(0xffffff); }
   else { const tg = targetFor(hit, tool.selected); if (tg && 'cell' in tg) c = tg.cell; ghost.material.color.set(0xffffff); }
   if (c) { ghost.position.set(c[0] + .5, c[1] + .5, c[2] + .5); ghost.visible = true; }
 }

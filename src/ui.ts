@@ -3,7 +3,7 @@ import { TYPES, CATS, type Cat } from './types';
 import { defaultWorld, replaceWorld, view, undoStack, redoStack, undo as undoOp, redo as redoOp } from './world';
 import { state, save } from './save';
 import { sfx } from './audio';
-import { GEO, baseMat, ghost, applyNight, applyRoofs, reduceMotion } from './render';
+import { GEO, baseMat, ghost, applyNight, applyRoofs, extras, reduceMotion } from './render';
 import { STAR_PATH, starTotal, hint } from './mission';
 import { tool, type Mode } from './input';
 import { setRoomPreview } from './render';
@@ -31,11 +31,12 @@ function makeThumbs() {
   const oc = new THREE.OrthographicCamera(-1, 1, 1, -1, .1, 50);
   Object.keys(TYPES).forEach(t => {
     const m = new THREE.Mesh(GEO[t], baseMat); sc.add(m);
+    const xs = extras(t).map(e => { const x = new THREE.Mesh(e.geo, e.mat); sc.add(x); return x; });
     const bb = GEO[t].boundingBox!, ctr = bb.getCenter(new THREE.Vector3()), sz = bb.getSize(new THREE.Vector3());
     const s = Math.max(sz.x, sz.y, sz.z) * .78 + .08;
     oc.left = -s; oc.right = s; oc.top = s; oc.bottom = -s; oc.updateProjectionMatrix();
     oc.position.set(ctr.x + 5, ctr.y + 4.4, ctr.z + 6.5); oc.lookAt(ctr);
-    r.render(sc, oc); THUMB[t] = cv.toDataURL('image/png'); sc.remove(m);
+    r.render(sc, oc); THUMB[t] = cv.toDataURL('image/png'); sc.remove(m, ...xs);
   });
   r.dispose();
 }

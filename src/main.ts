@@ -1,7 +1,7 @@
 import { voxels, dirty, hooks, defaultWorld, loadWorld } from './world';
 import { state, save, restore } from './save';
 import { ambience } from './audio';
-import { renderer, scene, camera, rebuild, updateLife, applyNight, animate, resize, reduceMotion } from './render';
+import { renderer, scene, camera, rebuild, updateDoors, updateLife, applyNight, animate, resize, reduceMotion } from './render';
 import { pick } from './pick';
 import { tap, cam, placeCamera, initInput } from './input';
 import { checkGoals, stats } from './mission';
@@ -30,6 +30,7 @@ function tick(now: number) {
   const dt = Math.min(.05, (now - last) / 1000); last = now;
   if (dirty.size) { dirty.forEach(t => rebuild(t)); dirty.clear(); }
   updateHero(dt, now);
+  { const h = heroCell(); updateDoors(dt, h[0], h[1], h[2]); }
   placeCamera();
   if (!reduceMotion) animate(dt, now);
   renderer.render(scene, camera);

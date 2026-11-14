@@ -79,13 +79,16 @@ export function defaultWorld(): Entry[] {
 // turn a saved list (one entry per piece) into cells; a piece that does not fit is left out
 function build(list: Entry[]): Map<number, Voxel> {
   const m = new Map<number, Voxel>();
-  list.forEach(e => {
+  const opening = (e: Entry) => !!TYPES[e[3]]?.opening;
+  // openings go in last, and may take the place of plain wall cubes
+  [...list.filter(e => !opening(e)), ...list.filter(opening)].forEach(e => {
     if (!TYPES[e[3]] || !inB(e[0], e[1], e[2])) return;
     const v: Voxel = { t: e[3], r: (((e[4] || 0) % 8) + 8) % 8 };
     if (turnStep(v.t) === 2) v.r &= 6;
     if (typeof e[5] === 'number') v.c = e[5];
     const cells = cellsOf(e[0], e[1], e[2], v.t, v.r), ak = K(e[0], e[1], e[2]);
-    if (cells.some(c => !inB(c[0], c[1], c[2]) || m.has(K(c[0], c[1], c[2])))) return;
+    const over = opening(e);
+    if (cells.some(c => { if (!inB(c[0], c[1], c[2])) return true; const o = m.get(K(c[0], c[1], c[2])); return !!o && !(over && TYPES[o.t].cat === 'cube'); })) return;
     cells.forEach((c, i) => m.set(K(c[0], c[1], c[2]), i ? { ...v, of: ak } : v));
   });
   return m;

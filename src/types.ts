@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 
-export type Cat = 'cube' | 'flower' | 'decor' | 'house' | 'furniture' | 'animal' | 'street';
+export type Cat = 'cube' | 'flower' | 'decor' | 'open' | 'house' | 'furniture' | 'animal' | 'street';
 export interface PieceType {
   name: string;
   cat: Cat;
@@ -9,6 +9,12 @@ export interface PieceType {
   flat?: boolean;
   glow?: boolean;
   size?: [number, number, number]; // cells along its own x, y and z when larger than one cell
+  color?: number;    // the main colour of a cube, passed on to an opening made in it
+  opening?: boolean; // a window or door: tapping a wall puts it in the wall instead of beside it
+  door?: boolean;    // the girl can walk through it, and its leaves open when she is near
+  glass?: () => THREE.BufferGeometry; // see-through panes, drawn separately
+  // moving parts: a leaf swings around a hinge (x, z in the piece's own space); with top set it rolls up instead
+  leaves?: { geo: () => THREE.BufferGeometry; glass?: boolean; hinge?: [number, number]; dir?: number; top?: number }[];
   roof?: boolean; // hidden while the player looks inside the houses
   solid?: boolean; // fills its cell like a cube: other pieces can be built on and beside it
   keep?: number[]; // part colours that paint does not cover
@@ -60,17 +66,52 @@ const cluster = (fn: (x: number, z: number, h: number) => Geo[]) => grow(M(SPOTS
 const petals4 = (x: number, z: number, y: number, color: number, r: number, s: number): Geo[] =>
   [b(s, .05, s, color, x + r, y, z), b(s, .05, s, color, x - r, y, z), b(s, .05, s, color, x, y, z + r), b(s, .05, s, color, x, y, z - r)];
 
+/* ---------- openings: wall blocks with a hole through them ---------- */
+const WHITE = 0xffffff, DOORWOOD = 0x8a5a33, DOORWOOD2 = 0xa9683a;
+// a wall w cells wide and h cells high, one cell deep, with a rectangular hole (heights measured from the floor)
+function holed(w: number, h: number, x0: number, x1: number, y0: number, y1: number): Geo[] {
+  const L = -.5, R = w - .5, out: Geo[] = [];
+  if (x0 > L) out.push(b(x0 - L, h, 1, WALL, (x0 + L) / 2, 0, 0));
+  if (x1 < R) out.push(b(R - x1, h, 1, WALL, (x1 + R) / 2, 0, 0));
+  if (y0 > 0) out.push(b(x1 - x0, y0, 1, WALL, (x0 + x1) / 2, 0, 0));
+  if (y1 < h) out.push(b(x1 - x0, h - y1, 1, WALL, (x0 + x1) / 2, y1, 0));
+  return out;
+}
+// a thin white border lining the hole
+function trim(x0: number, x1: number, y0: number, y1: number): Geo[] {
+  const out = [b(.05, y1 - y0, 1.04, WHITE, x0 + .025, y0, 0), b(.05, y1 - y0, 1.04, WHITE, x1 - .025, y0, 0), b(x1 - x0, .05, 1.04, WHITE, (x0 + x1) / 2, y1 - .05, 0)];
+  if (y0 > 0) out.push(b(x1 - x0, .05, 1.04, WHITE, (x0 + x1) / 2, y0, 0));
+  return out;
+}
+// stepped fillers that round the top corners of a hole into an arch, or all four into a circle
+function arch(x0: number, x1: number, y0: number, y1: number, all?: boolean): Geo[] {
+  const out: Geo[] = [];
+  for (const [wx, hy] of [[.1, .3], [.2, .15]]) {
+    out.push(b(wx, hy, 1, WALL, x0 + wx / 2, y1 - hy, 0), b(wx, hy, 1, WALL, x1 - wx / 2, y1 - hy, 0));
+    if (all) out.push(b(wx, hy, 1, WALL, x0 + wx / 2, y0, 0), b(wx, hy, 1, WALL, x1 - wx / 2, y0, 0));
+  }
+  return out;
+}
+const pane = (x0: number, x1: number, y0: number, y1: number) => M([b(x1 - x0, y1 - y0, .04, GLASS, (x0 + x1) / 2, y0, 0)]);
+const barV = (x: number, y0: number, y1: number) => b(.05, y1 - y0, .07, WHITE, x, y0, 0);
+const barH = (x0: number, x1: number, y: number) => b(x1 - x0, .05, .07, WHITE, (x0 + x1) / 2, y - .025, 0);
+// a panelled door leaf centred on xc; the knob sits on the side given by knob (1 or -1)
+const leaf = (xc: number, wd: number, knob: number, col = DOORWOOD, col2 = DOORWOOD2) => M([b(wd, 1.78, .08, col, xc, 0, 0),
+  b(wd - .24, .6, .1, col2, xc, 1, 0), b(wd - .24, .6, .1, col2, xc, .2, 0), b(.06, .06, .14, 0xffd24a, xc + knob * (wd / 2 - .11), .85, 0)]);
+const barnLeaf = (xc: number) => M([b(.89, 1.83, .08, 0xb5382f, xc, 0, 0), b(.89, .1, .1, WHITE, xc, 0, 0), b(.89, .1, .1, WHITE, xc, 1.73, 0), b(.89, .1, .1, WHITE, xc, .87, 0),
+  b(.1, 1.83, .1, WHITE, xc - .395, 0, 0), b(.1, 1.83, .1, WHITE, xc + .395, 0, 0)]);
+
 /* ---------- block & item types ---------- */
 export const TYPES: Record<string, PieceType> = {
-  grass: { name: 'عشب', cat: 'cube', geo: () => M([b(1, .78, 1, 0x9a6b3f, 0, 0, 0), b(1, .22, 1, 0x62b84f, 0, .78, 0)]) },
-  stone: { name: 'حجر', cat: 'cube', geo: () => cube(0xa9a9b6) },
-  wood: { name: 'خشب', cat: 'cube', geo: () => cube(0xb07a45) },
-  white: { name: 'أبيض', cat: 'cube', geo: () => cube(0xf6f2ea) },
-  pink: { name: 'وردي', cat: 'cube', geo: () => cube(0xf08fb6) },
-  purple: { name: 'بنفسجي', cat: 'cube', geo: () => cube(0x9b6fd6) },
-  yellow: { name: 'أصفر', cat: 'cube', geo: () => cube(0xffd24a) },
-  brick: { name: 'طوب', cat: 'cube', geo: () => M([b(1, 1, 1, 0xb85c44, 0, 0, 0), b(1.004, .03, 1.004, 0xd9b8a3, 0, .31, 0), b(1.004, .03, 1.004, 0xd9b8a3, 0, .65, 0)]) },
-  water: { name: 'ماء', cat: 'cube', geo: () => cube(0x4fb7ee) },
+  grass: { name: 'عشب', cat: 'cube', color: 0x62b84f, geo: () => M([b(1, .78, 1, 0x9a6b3f, 0, 0, 0), b(1, .22, 1, 0x62b84f, 0, .78, 0)]) },
+  stone: { name: 'حجر', cat: 'cube', color: 0xa9a9b6, geo: () => cube(0xa9a9b6) },
+  wood: { name: 'خشب', cat: 'cube', color: 0xb07a45, geo: () => cube(0xb07a45) },
+  white: { name: 'أبيض', cat: 'cube', color: 0xf6f2ea, geo: () => cube(0xf6f2ea) },
+  pink: { name: 'وردي', cat: 'cube', color: 0xf08fb6, geo: () => cube(0xf08fb6) },
+  purple: { name: 'بنفسجي', cat: 'cube', color: 0x9b6fd6, geo: () => cube(0x9b6fd6) },
+  yellow: { name: 'أصفر', cat: 'cube', color: 0xffd24a, geo: () => cube(0xffd24a) },
+  brick: { name: 'طوب', cat: 'cube', color: 0xb85c44, geo: () => M([b(1, 1, 1, 0xb85c44, 0, 0, 0), b(1.004, .03, 1.004, 0xd9b8a3, 0, .31, 0), b(1.004, .03, 1.004, 0xd9b8a3, 0, .65, 0)]) },
+  water: { name: 'ماء', cat: 'cube', color: 0x4fb7ee, geo: () => cube(0x4fb7ee) },
 
   rose: { name: 'وردة', cat: 'flower', geo: () => cluster((x, z, h) => stem(x, z, h).concat([b(.2, .14, .2, 0xe02d43, x, h, z), b(.12, .09, .12, 0xb81d35, x, h + .14, z)])) },
   tulip: { name: 'توليب', cat: 'flower', geo: () => cluster((x, z, h) => stem(x, z, h).concat([b(.16, .2, .16, 0xffcf2e, x, h, z), b(.08, .06, .08, 0xff9a2e, x, h + .2, z)])) },
@@ -96,11 +137,33 @@ export const TYPES: Record<string, PieceType> = {
     b(.1, .1, .1, 0xffffff, 0, .14, -.28), b(.04, .05, .02, 0x2b2140, -.07, .4, .26), b(.04, .05, .02, 0x2b2140, .07, .4, .26), b(.05, .04, .02, 0xf06a9b, 0, .33, .26)]) },
 
   /* ---------- house parts ---------- */
-  window: { name: 'نافذة', cat: 'house', solid: true, keep: [GLASS], geo: () => M([b(1, 1, 1, WALL, 0, 0, 0)].concat(...[.505, -.505].map(o => [
-    b(.56, .56, .02, GLASS, 0, .22, o), b(.06, .56, .03, 0xffffff, 0, .22, o * 1.01), b(.56, .06, .03, 0xffffff, 0, .47, o * 1.01),
-    b(.02, .56, .56, GLASS, o, .22, 0), b(.03, .56, .06, 0xffffff, o * 1.01, .22, 0), b(.03, .06, .56, 0xffffff, o * 1.01, .47, 0)]))) },
-  door: { name: 'باب', cat: 'house', solid: true, keep: [0x8a5a33, 0xa9683a, 0xffd24a], geo: () => M([b(1, 1, 1, WALL, 0, 0, 0)].concat(...[1, -1].map(s => [
-    b(.5, .86, .03, 0x8a5a33, 0, 0, s * .505), b(.34, .3, .02, 0xa9683a, 0, .46, s * .52), b(.06, .06, .04, 0xffd24a, s * .15, .38, s * .53)]))) },
+  /* ---------- windows: tap a wall to open one in it ---------- */
+  window: { name: 'نافذة مربعة', cat: 'open', solid: true, opening: true, keep: [WHITE], geo: () => M([...holed(1, 1, -.3, .3, .2, .8), ...trim(-.3, .3, .2, .8), barV(0, .2, .8), barH(-.3, .3, .5)]), glass: () => pane(-.3, .3, .2, .8) },
+  winWide: { name: 'نافذة عريضة', cat: 'open', solid: true, opening: true, size: [2, 1, 1], keep: [WHITE], geo: () => M([...holed(2, 1, -.3, 1.3, .2, .8), ...trim(-.3, 1.3, .2, .8), barV(.5, .2, .8)]), glass: () => pane(-.3, 1.3, .2, .8) },
+  winTall: { name: 'نافذة طويلة', cat: 'open', solid: true, opening: true, size: [1, 2, 1], keep: [WHITE], geo: () => M([...holed(1, 2, -.3, .3, .3, 1.7), ...trim(-.3, .3, .3, 1.7), barH(-.3, .3, 1)]), glass: () => pane(-.3, .3, .3, 1.7) },
+  winArch: { name: 'نافذة مقوّسة', cat: 'open', solid: true, opening: true, size: [1, 2, 1], keep: [WHITE], geo: () => M([...holed(1, 2, -.32, .32, .3, 1.75), ...arch(-.32, .32, .3, 1.75), barV(0, .3, 1.75), barH(-.32, .32, 1.3)]), glass: () => pane(-.32, .32, .3, 1.75) },
+  winRound: { name: 'نافذة دائرية', cat: 'open', solid: true, opening: true, keep: [WHITE], geo: () => M([...holed(1, 1, -.34, .34, .16, .84), ...arch(-.34, .34, .16, .84, true), barV(0, .16, .84), barH(-.34, .34, .5)]), glass: () => pane(-.34, .34, .16, .84) },
+  winShutter: { name: 'نافذة بمصاريع', cat: 'open', solid: true, opening: true, keep: [WHITE, 0x3f9b4b, 0x2f7d3a], geo: () => M([...holed(1, 1, -.2, .2, .2, .8), ...trim(-.2, .2, .2, .8), barH(-.2, .2, .5),
+    b(.16, .62, .05, 0x3f9b4b, .31, .19, .52), b(.16, .62, .05, 0x3f9b4b, -.31, .19, .52), ...[.3, .45, .6].flatMap(y => [b(.12, .03, .06, 0x2f7d3a, .31, y, .525), b(.12, .03, .06, 0x2f7d3a, -.31, y, .525)])]), glass: () => pane(-.2, .2, .2, .8) },
+  winBig: { name: 'نافذة كبيرة', cat: 'open', solid: true, opening: true, size: [2, 2, 1], keep: [WHITE], geo: () => M([...holed(2, 2, -.3, 1.3, .3, 1.7), ...trim(-.3, 1.3, .3, 1.7), barV(.5, .3, 1.7), barH(-.3, 1.3, 1)]), glass: () => pane(-.3, 1.3, .3, 1.7) },
+
+  /* ---------- doors: two cells high, they open when the girl comes near ---------- */
+  door: { name: 'باب خشبي', cat: 'open', solid: true, opening: true, door: true, size: [1, 2, 1], keep: [WHITE], geo: () => M([...holed(1, 2, -.38, .38, 0, 1.8), ...trim(-.38, .38, 0, 1.8)]),
+    leaves: [{ geo: () => leaf(0, .74, 1), hinge: [-.37, 0], dir: 1 }] },
+  doorGlass: { name: 'باب زجاجي', cat: 'open', solid: true, opening: true, door: true, size: [1, 2, 1], keep: [WHITE], geo: () => M([...holed(1, 2, -.38, .38, 0, 1.8), ...trim(-.38, .38, 0, 1.8)]),
+    leaves: [{ geo: () => M([b(.1, 1.78, .08, WHITE, .32, 0, 0), b(.1, 1.78, .08, WHITE, -.32, 0, 0), b(.54, .14, .08, WHITE, 0, 0, 0), b(.54, .14, .08, WHITE, 0, 1.64, 0), b(.54, .06, .08, WHITE, 0, .86, 0), b(.04, .2, .14, 0x8c8c99, .3, .8, 0)]), hinge: [-.37, 0], dir: 1 },
+      { geo: () => M([b(.54, 1.5, .03, GLASS, 0, .14, 0)]), glass: true, hinge: [-.37, 0], dir: 1 }] },
+  doorDouble: { name: 'باب مزدوج', cat: 'open', solid: true, opening: true, door: true, size: [2, 2, 1], keep: [WHITE], geo: () => M([...holed(2, 2, -.3, 1.3, 0, 1.8), ...trim(-.3, 1.3, 0, 1.8)]),
+    leaves: [{ geo: () => leaf(.1, .78, 1), hinge: [-.29, 0], dir: 1 }, { geo: () => leaf(.9, .78, -1), hinge: [1.29, 0], dir: -1 }] },
+  doorArch: { name: 'باب مقوّس', cat: 'open', solid: true, opening: true, door: true, size: [1, 2, 1], keep: [WHITE], geo: () => M([...holed(1, 2, -.38, .38, 0, 1.85), ...arch(-.38, .38, 0, 1.85)]),
+    leaves: [{ geo: () => leaf(0, .74, 1, 0x2f8f83, 0x3fa99b), hinge: [-.37, 0], dir: 1 }] },
+  barnDoor: { name: 'باب حظيرة', cat: 'open', solid: true, opening: true, door: true, size: [2, 2, 1], keep: [WHITE], geo: () => M(holed(2, 2, -.4, 1.4, 0, 1.85)),
+    leaves: [{ geo: () => barnLeaf(.05), hinge: [-.4, 0], dir: 1 }, { geo: () => barnLeaf(.95), hinge: [1.4, 0], dir: -1 }] },
+  garageDoor: { name: 'باب موقف', cat: 'open', solid: true, opening: true, door: true, size: [2, 2, 1], keep: [WHITE], geo: () => M(holed(2, 2, -.4, 1.4, 0, 1.75)),
+    leaves: [{ geo: () => M([b(1.78, 1.73, .08, 0xdfe3e8, .5, 0, 0), ...[.43, .86, 1.3].map(y => b(1.78, .03, .1, 0xaab2bd, .5, y, 0))]), top: 1.75 }] },
+  gate: { name: 'باب حديقة', cat: 'open', door: true, geo: () => M([b(.1, .7, .1, 0xfbf7ef, .45, 0, 0), b(.1, .7, .1, 0xfbf7ef, -.45, 0, 0)]),
+    leaves: [{ geo: () => M([...[-.3, -.15, 0, .15, .3].map(x => b(.1, .5, .06, 0xfbf7ef, x, .04, 0)), b(.8, .06, .05, 0xffffff, 0, .14, 0), b(.8, .06, .05, 0xffffff, 0, .38, 0)]), hinge: [-.4, 0], dir: 1 }] },
+
   plank: { name: 'أرضية خشب', cat: 'house', flat: true, geo: () => M([b(1, .05, 1, 0xc98a4b, 0, 0, 0), b(1, .055, .02, 0x8a5a33, 0, 0, -.25), b(1, .055, .02, 0x8a5a33, 0, 0, .25)]) },
   roof: { name: 'سقف مائل', cat: 'house', solid: true, roof: true, geo: () => M(STEPS.map(i => b(1, .25, 1 - i * .25, i % 2 ? ROOF2 : ROOF, 0, i * .25, -i * .125))) },
   roofCorner: { name: 'زاوية سقف', cat: 'house', solid: true, roof: true, geo: () => M(STEPS.map(i => b(1 - i * .25, .25, 1 - i * .25, i % 2 ? ROOF2 : ROOF, -i * .125, i * .25, -i * .125))) },
@@ -172,7 +235,7 @@ export const TYPES: Record<string, PieceType> = {
     b(.24, .2, .2, 0xff9d3c, 0, .28, .2), b(.07, .08, .05, 0xff9d3c, .08, .48, .2), b(.07, .08, .05, 0xff9d3c, -.08, .48, .2),
     b(.04, .05, .02, 0x3f9b4b, .06, .38, .3), b(.04, .05, .02, 0x3f9b4b, -.06, .38, .3), b(.04, .03, .02, 0xf06a9b, 0, .34, .3), b(.06, .3, .06, 0xff9d3c, 0, .2, -.3)]) },
 };
-export const CATS: [Cat, string][] = [['flower', 'زهور'], ['cube', 'مكعبات'], ['house', 'بيت'], ['furniture', 'أثاث'], ['decor', 'حديقة'], ['animal', 'مزرعة'], ['street', 'شارع']];
+export const CATS: [Cat, string][] = [['flower', 'زهور'], ['cube', 'مكعبات'], ['open', 'فتحات'], ['house', 'بيت'], ['furniture', 'أثاث'], ['decor', 'حديقة'], ['animal', 'مزرعة'], ['street', 'شارع']];
 for (const t in TYPES) if (TYPES[t].cat === 'flower') TYPES[t].keep = [STEM, LEAF, 0x6b4423];
 TYPES.tree.keep = TYPES.blossom.keep = [0x8a5a33];
 TYPES.fountain.keep = [0x55bdf2, 0x9adbfa];

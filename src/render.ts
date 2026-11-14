@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { TYPES, isBlock, isFlower } from './types';
-import { N, voxels, unK, view } from './world';
+import { N, voxels, unK, view, cellsOf } from './world';
 import { state } from './save';
 
 export const reduceMotion = !!window.matchMedia && matchMedia('(prefers-reduced-motion:reduce)').matches;
@@ -51,6 +51,7 @@ const clouds: THREE.Group[] = [];
 /* ---------- materials, geometry, instanced meshes ---------- */
 export const baseMat = new THREE.MeshLambertMaterial({ vertexColors: true });
 const glowMat = new THREE.MeshLambertMaterial({ vertexColors: true, emissive: 0xffb648, emissiveIntensity: 0 });
+const glassMat = new THREE.MeshLambertMaterial({ vertexColors: true, transparent: true, opacity: .4, depthWrite: false });
 export const GEO: Record<string, THREE.BufferGeometry> = {};
 const MESH: Record<string, THREE.InstancedMesh> = {};
 Object.keys(TYPES).forEach(t => GEO[t] = TYPES[t].geo());
@@ -82,13 +83,13 @@ function splitPaint(t: string) {
   };
   return { paint: make(A), keep: B.p.length ? make(B) : null };
 }
-function fill(key: string, geo: THREE.BufferGeometry, t: string, list: number[], painted: boolean) {
+function fill(key: string, geo: THREE.BufferGeometry, t: string, list: number[], painted: boolean, mat?: THREE.Material) {
   let m = MESH[key];
   if (!m || m.userData.cap < list.length) {
     if (m) { world.remove(m); m.dispose(); }
     const cap = Math.max(64, Math.pow(2, Math.ceil(Math.log2(list.length + 1))));
-    m = new THREE.InstancedMesh(geo, TYPES[t].glow ? glowMat : baseMat, cap);
-    m.userData.cap = cap; m.frustumCulled = false; m.castShadow = !TYPES[t].flat; m.receiveShadow = true;
+    m = new THREE.InstancedMesh(geo, mat || (TYPES[t].glow ? glowMat : baseMat), cap);
+    m.userData.cap = cap; m.frustumCulled = false; m.castShadow = !TYPES[t].flat && mat !== glassMat; m.receiveShadow = true;
     world.add(m); MESH[key] = m;
   }
   list.forEach((k, i) => {
@@ -105,7 +106,7 @@ function fill(key: string, geo: THREE.BufferGeometry, t: string, list: number[],
 export function applyRoofs() {
   for (const key in MESH) MESH[key].visible = !(view.hideRoofs && !!TYPES[key.split('#')[0]].roof);
 }
-export function rebuild(t: string) {
+function rebuildBase(t: string) {
   const plain: number[] = [], painted: number[] = [];
   voxels.forEach((v, k) => { if (v.t === t && v.of == null) (v.c == null ? plain : painted).push(k); });
   fill(t, GEO[t], t, plain, false);
@@ -178,4 +179,53 @@ export function setRoomPreview(r: { x0: number; z0: number; x1: number; z1: numb
   roomGhost.position.set(r.x0 + w / 2, r.h / 2, r.z0 + d / 2);
   // too small to be a room: show it in red
   roomGhost.material.color.set(w < 2 || d < 2 ? 0xff4d6d : 0xffffff);
+}
+
+/* ---------- glass panes and door leaves ---------- */
+const XGEO: Record<string, THREE.BufferGeometry> = {};
+const xgeo = (key: string, make: () => THREE.BufferGeometry) => XGEO[key] || (XGEO[key] = make());
+// the extra parts of a type, so the palette thumbnails can show them too
+export function extras(t: string) {
+  const T = TYPES[t], out: { geo: THREE.BufferGeometry; mat: THREE.Material }[] = [];
+  if (T.glass) out.push({ geo: xgeo(t + '#g', T.glass), mat: glassMat });
+  T.leaves?.forEach((l, i) => out.push({ geo: xgeo(t + '#l' + i, l.geo), mat: l.glass ? glassMat : baseMat }));
+  return out;
+}
+interface Door { t: string; k: number; idx: number; open: number; shown: number; x: number; y: number; z: number; r: number; cx: number; cz: number }
+let doors: Door[] = [];
+export function rebuild(t: string) {
+  rebuildBase(t);
+  const T = TYPES[t]; if (!T.glass && !T.leaves) return;
+  const all: number[] = []; voxels.forEach((v, k) => { if (v.t === t && v.of == null) all.push(k); });
+  if (T.glass) fill(t + '#g', xgeo(t + '#g', T.glass), t, all, false, glassMat);
+  if (!T.leaves) return;
+  T.leaves.forEach((l, i) => fill(t + '#l' + i, xgeo(t + '#l' + i, l.geo), t, all, false, l.glass ? glassMat : baseMat));
+  // the leaves were just redrawn closed; remember how far each door was open so it swings back
+  const was = new Map(doors.filter(d => d.t === t).map(d => [d.k, d.open]));
+  doors = doors.filter(d => d.t !== t).concat(all.map((k, idx) => {
+    const c = unK(k), v = voxels.get(k)!, cells = cellsOf(c[0], c[1], c[2], t, v.r);
+    let cx = 0, cz = 0; cells.forEach(p => { cx += p[0] + .5; cz += p[2] + .5; });
+    return { t, k, idx, open: was.get(k) || 0, shown: 0, x: c[0], y: c[1], z: c[2], r: v.r, cx: cx / cells.length, cz: cz / cells.length };
+  }));
+}
+const mA = new THREE.Matrix4(), mB = new THREE.Matrix4();
+// doors open while the girl is close, and close behind her
+export function updateDoors(dt: number, hx: number, hy: number, hz: number) {
+  for (const d of doors) {
+    const near = Math.abs(hy - d.y) < 1.6 && Math.hypot(hx - d.cx, hz - d.cz) < 1.7;
+    d.open += ((near ? 1 : 0) - d.open) * Math.min(1, dt * 7);
+    if (Math.abs(d.open - d.shown) < .002) continue;
+    d.shown = d.open;
+    TYPES[d.t].leaves!.forEach((l, i) => {
+      const m = MESH[d.t + '#l' + i]; if (!m) return;
+      mA.makeRotationY(d.r * Math.PI / 4).setPosition(d.x + .5, d.y + .5, d.z + .5);
+      if (l.top != null) {
+        const top = -.5 + l.top;
+        mA.multiply(mB.makeTranslation(0, top, 0)).multiply(mB.makeScale(1, 1 - d.open * .92, 1)).multiply(mB.makeTranslation(0, -top, 0));
+      } else if (l.hinge) {
+        mA.multiply(mB.makeTranslation(l.hinge[0], 0, l.hinge[1])).multiply(mB.makeRotationY((l.dir || 1) * d.open * 1.45)).multiply(mB.makeTranslation(-l.hinge[0], 0, -l.hinge[1]));
+      }
+      m.setMatrixAt(d.idx, mA); m.instanceMatrix.needsUpdate = true;
+    });
+  }
 }
