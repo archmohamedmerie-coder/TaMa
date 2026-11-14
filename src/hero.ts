@@ -94,16 +94,22 @@ export function initHero() {
 export function updateHero(dt: number, now: number) {
   let walking = false;
   if (finger && tool.mode !== 'walk') clearFinger();
-  if (finger && view.fp) {
-    // through her eyes: a finger on the screen walks her forward, and its place left or right of the middle turns her
-    const r = canvas.getBoundingClientRect(), nx = Math.max(-1, Math.min(1, ((finger.x - r.left) / r.width - .5) * 2.4));
-    facing -= nx * Math.abs(nx) * 2.6 * dt;
-    if ((finger.y - r.top) / r.height < .88) {           // a finger at the very bottom only turns
-      const step = SPEED * .8 * dt, dx = Math.sin(facing) * step, dz = Math.cos(facing) * step;
+  if (!view.fp) { goal = null; pitch = -.05; }
+  if (goal) {
+    // through her eyes: she walks to the spot that was tapped, turning to face it
+    let dx = goal.x - px, dz = goal.z - pz; const d = Math.hypot(dx, dz);
+    if (d < .25 || stuck > 20 || --goal.left < 0) goal = null;
+    else {
+      const want = Math.atan2(dx, dz), df = ((want - facing + Math.PI) % (Math.PI * 2) + Math.PI * 2) % (Math.PI * 2) - Math.PI;
+      facing += df * Math.min(1, dt * 4);
+      const step = Math.min(d, SPEED * .8 * dt); dx *= step / d; dz *= step / d;
       walking = tryMove(dx, dz) || tryMove(dx, 0) || tryMove(0, dz);
+      stuck = walking ? 0 : stuck + 1;
     }
     cam.target.lerp(v3.set(px - N / 2, py, pz - N / 2), Math.min(1, dt * 3));
-  } else if (finger) {
+  }
+  mark.visible = !!goal; if (goal) mark.position.set(goal.x, py + .03, goal.z);
+  if (finger && !view.fp) {
     // she heads for the spot under the finger, on the level she is standing on
     const p = planePoint(finger.x, finger.y, py);
     if (p) {
@@ -131,6 +137,24 @@ export function updateHero(dt: number, now: number) {
 
 let bob = 0;
 // where her eyes are and which way she looks, in world cells
-export const heroEye = () => ({ x: px, y: shownY + .72 + bob, z: pz, f: facing });
+export const heroEye = () => ({ x: px, y: shownY + .72 + bob, z: pz, f: facing, p: pitch });
+// through her eyes: the spot she is walking to, her head tilt, and a marker on the ground
+let goal: { x: number; z: number; left: number } | null = null, pitch = -.05, stuck = 0;
+const mark = new THREE.Mesh(new THREE.CylinderGeometry(.22, .22, .03, 16), new THREE.MeshBasicMaterial({ color: 0xffc22e, transparent: true, opacity: .75 }));
+mark.visible = false; world.add(mark);
+// a drag across the screen turns her head: right and left to look around, up and down a little
+export function lookBy(dx: number, dy: number) {
+  facing -= dx * .006; pitch = Math.max(-.7, Math.min(.5, pitch - dy * .004));
+}
+// a tap sends her to that spot on the ground; a tap at the sky or far away walks her a few steps that way
+export function walkToScreen(sx: number, sy: number) {
+  const p = planePoint(sx, sy, py);
+  if (p && Math.hypot(p[0] - px, p[1] - pz) < 12) goal = { x: p[0], z: p[1], left: 600 };
+  else {
+    const r = canvas.getBoundingClientRect(), a = facing - ((sx - r.left) / r.width - .5) * 1.1;
+    goal = { x: px + Math.sin(a) * 6, z: pz + Math.cos(a) * 6, left: 600 };
+  }
+  stuck = 0;
+}
 // for tests from the console
 export const heroCell = () => [px, py, pz];

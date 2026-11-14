@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 
-export type Cat = 'cube' | 'flower' | 'decor' | 'open' | 'house' | 'furniture' | 'bath' | 'animal' | 'street';
+export type Cat = 'cube' | 'flower' | 'decor' | 'open' | 'house' | 'furniture' | 'bath' | 'light' | 'animal' | 'street';
 export interface PieceType {
   name: string;
   cat: Cat;
@@ -10,6 +10,7 @@ export interface PieceType {
   glow?: boolean;
   cells?: number[][];  // for a piece that does not fill its whole box: the cells it does fill, as [x, y, z] offsets, anchor first
   clears?: number[][]; // cells where a floor slab gives way when the piece is placed
+  hang?: boolean;      // a ceiling light: it goes just under the first thing above the tapped spot
   thin?: boolean;      // hangs on the wall: the girl can walk past it
   size?: [number, number, number]; // cells along its own x, y and z when larger than one cell
   color?: number;    // the main colour of a cube, passed on to an opening made in it
@@ -206,7 +207,7 @@ export const TYPES: Record<string, PieceType> = {
     b(1, .08, 1.1, 0xe5383b, 0, 2, 0, [.25, 0, 0]), b(.2, .085, 1.1, WHITE, .3, 2, 0, [.25, 0, 0]), b(.2, .085, 1.1, WHITE, -.3, 2, 0, [.25, 0, 0])]) },
   stoop: { name: 'درجات المدخل', cat: 'house', flat: true, geo: () => M([b(1, .14, 1, 0xb9b9c6, 0, 0, 0), b(1, .28, .5, 0xc9c9d4, 0, 0, -.25)]) },
   mailbox: { name: 'صندوق بريد', cat: 'house', keep: [WOOD2, 0xffd24a], geo: () => M([b(.08, .7, .08, WOOD2, 0, 0, 0), b(.3, .22, .44, 0xe5383b, 0, .7, 0), b(.04, .16, .04, 0xffd24a, .17, .78, .1)]) },
-  wallLamp: { name: 'مصباح حائط', cat: 'house', thin: true, glow: true, keep: [0x4a4458], geo: () => M([b(.06, .06, .3, 0x4a4458, 0, 1.3, -.34), b(.18, .22, .18, 0xffe38a, 0, 1.14, -.2), b(.22, .04, .22, 0x4a4458, 0, 1.36, -.2)]) },
+  wallLamp: { name: 'مصباح حائط', cat: 'light', thin: true, glow: true, keep: [0x4a4458], geo: () => M([b(.06, .06, .3, 0x4a4458, 0, 1.3, -.34), b(.18, .22, .18, 0xffe38a, 0, 1.14, -.2), b(.22, .04, .22, 0x4a4458, 0, 1.36, -.2)]) },
   flowerBox: { name: 'أصيص نافذة', cat: 'house', thin: true, keep: [LEAF, 0xe02d43, 0xffcf2e, 0xff7fb0], geo: () => M([b(.8, .18, .2, WOOD2, 0, .8, -.38), b(.7, .06, .16, LEAF, 0, .95, -.38),
     b(.1, .12, .1, 0xe02d43, -.25, .98, -.38), b(.1, .12, .1, 0xffcf2e, 0, .98, -.38), b(.1, .12, .1, 0xff7fb0, .25, .98, -.38)]) },
   /* ---------- roofs (the roof tool lays these out; they can also be placed by hand) ---------- */
@@ -247,7 +248,7 @@ export const TYPES: Record<string, PieceType> = {
   bookshelf: { name: 'مكتبة', cat: 'furniture', keep: BOOKS, geo: () => M([b(.06, 1.2, .36, WOOD2, .42, 0, -.28), b(.06, 1.2, .36, WOOD2, -.42, 0, -.28), b(.9, 1.2, .04, WOOD2, 0, 0, -.44)].concat(
     [0, .38, .76, 1.15].map(y => b(.9, .05, .36, WOOD2, 0, y, -.28)),
     ...[.05, .43, .81].map((y, row) => [-.3, -.15, 0, .15, .3].map((x, i) => b(.12, .22 + ((i + row) % 3) * .03, .24, BOOKS[(i + row * 2) % 5], x, y, -.28))))) },
-  lamp: { name: 'مصباح', cat: 'furniture', glow: true, keep: [0x4a4458], geo: () => M([b(.24, .05, .24, 0x4a4458, 0, 0, 0), b(.05, .9, .05, 0x4a4458, 0, .05, 0), b(.34, .26, .34, 0xffe38a, 0, .9, 0)]) },
+  lamp: { name: 'مصباح أرضي', cat: 'light', glow: true, keep: [0x4a4458], geo: () => M([b(.24, .05, .24, 0x4a4458, 0, 0, 0), b(.05, .9, .05, 0x4a4458, 0, .05, 0), b(.34, .26, .34, 0xffe38a, 0, .9, 0)]) },
   rug: { name: 'سجادة', cat: 'furniture', flat: true, geo: () => M([b(.98, .04, .98, 0xe2477f, 0, 0, 0), b(.74, .05, .74, 0xffd6e6, 0, 0, 0)]) },
   curtain: { name: 'ستارة', cat: 'furniture', thin: true, keep: [0x4a4458], geo: () => M([b(1, .05, .05, 0x4a4458, 0, .92, -.43), b(.3, .9, .07, 0xe2477f, .34, .03, -.43), b(.3, .9, .07, 0xe2477f, -.34, .03, -.43),
     b(.96, .14, .08, 0xc93a6e, 0, .8, -.43)]) },
@@ -288,6 +289,16 @@ export const TYPES: Record<string, PieceType> = {
   shower: { name: 'دش', cat: 'bath', keep: [0x8c8c99], geo: () => M([b(.94, .08, .94, WHITE, 0, 0, 0), b(.05, 1.7, .05, 0x8c8c99, -.4, .08, -.4), b(.25, .04, .25, 0x8c8c99, -.28, 1.7, -.28)]),
     glass: () => M([b(.04, 1.6, .9, GLASS, .45, .08, 0), b(.9, 1.6, .04, GLASS, 0, .08, .45)]) },
   mirror: { name: 'مرآة', cat: 'bath', thin: true, keep: [0xcfeaf7], geo: () => M([b(.6, .8, .05, 0xc98a4b, 0, .6, -.46), b(.5, .7, .03, 0xcfeaf7, 0, .65, -.43)]) },
+
+  /* ---------- lights: they glow at night; ceiling ones hang under whatever is above ---------- */
+  tableLamp: { name: 'أباجورة', cat: 'light', glow: true, keep: [0x4a4458, WOOD], geo: () => M([b(.4, .4, .4, WOOD, 0, 0, 0), b(.12, .04, .12, 0x4a4458, 0, .4, 0), b(.04, .2, .04, 0x4a4458, 0, .44, 0), b(.26, .2, .26, 0xffe38a, 0, .62, 0)]) },
+  tripodLamp: { name: 'مصباح ثلاثي', cat: 'light', glow: true, keep: [WOOD2], geo: () => M([b(.04, 1, .04, WOOD2, .15, 0, .1), b(.04, 1, .04, WOOD2, -.15, 0, .1), b(.04, 1, .04, WOOD2, 0, 0, -.15), b(.36, .3, .36, 0xffe38a, 0, 1, 0)]) },
+  wallBar: { name: 'إنارة جدارية', cat: 'light', thin: true, glow: true, keep: [0x4a4458], geo: () => M([b(.56, .12, .03, 0x4a4458, 0, 1.48, -.48), b(.5, .08, .08, 0xffe38a, 0, 1.5, -.44)]) },
+  sconce: { name: 'شمعة جدارية', cat: 'light', thin: true, glow: true, keep: [0x4a4458, 0xffc22e], geo: () => M([b(.14, .3, .03, 0x4a4458, 0, 1.1, -.48), b(.04, .04, .2, 0x4a4458, 0, 1.14, -.38), b(.07, .18, .07, 0xf6f2ea, 0, 1.18, -.3), b(.05, .08, .05, 0xffc22e, 0, 1.36, -.3)]) },
+  ceilingLamp: { name: 'مصباح سقفي', cat: 'light', thin: true, glow: true, hang: true, keep: [0x4a4458], geo: () => M([b(.2, .04, .2, 0x4a4458, 0, .96, 0), b(.03, .4, .03, 0x4a4458, 0, .58, 0), b(.34, .2, .34, 0xffe38a, 0, .4, 0)]) },
+  chandelier: { name: 'ثريا', cat: 'light', thin: true, glow: true, hang: true, keep: [0xc9a227], geo: () => M([b(.04, .42, .04, 0xc9a227, 0, .58, 0), b(.7, .05, .7, 0xc9a227, 0, .55, 0), b(.16, .16, .16, 0xffe38a, 0, .4, 0),
+    ...[[.3, .3], [-.3, .3], [.3, -.3], [-.3, -.3]].map(p => b(.1, .14, .1, 0xffe38a, p[0], .6, p[1]))]) },
+  ceilingSpot: { name: 'سبوت سقفي', cat: 'light', thin: true, glow: true, hang: true, keep: [0xf6f2ea], geo: () => M([b(.3, .06, .3, 0xf6f2ea, 0, .94, 0), b(.2, .04, .2, 0xffe38a, 0, .9, 0)]) },
 
   /* ---------- street (two cells long, front towards +z) ---------- */
   car: { name: 'سيارة', cat: 'street', size: [1, 1, 2], keep: [DARK, GLASS, 0xffe38a, 0xb81d35, 0x8c8c99], geo: () => M([b(.8, .3, 1.7, 0xe5383b, 0, .14, .5), b(.72, .28, .8, GLASS, 0, .44, .4), b(.74, .05, .84, 0xe5383b, 0, .72, .4),
@@ -377,7 +388,7 @@ export function fenceGeo(mask: number): Geo {
   return M(parts);
 }
 for (const t of ['bunny', 'cow', 'sheep', 'chicken', 'duck', 'horse', 'cat', 'dog']) TYPES[t].alive = true;
-export const CATS: [Cat, string][] = [['flower', 'زهور'], ['cube', 'مكعبات'], ['open', 'فتحات'], ['house', 'بيت'], ['furniture', 'أثاث'], ['bath', 'حمّام'], ['decor', 'حديقة'], ['animal', 'مزرعة'], ['street', 'شارع']];
+export const CATS: [Cat, string][] = [['flower', 'زهور'], ['cube', 'مكعبات'], ['open', 'فتحات'], ['house', 'بيت'], ['furniture', 'أثاث'], ['bath', 'حمّام'], ['light', 'إنارة'], ['decor', 'حديقة'], ['animal', 'مزرعة'], ['street', 'شارع']];
 for (const t in TYPES) if (TYPES[t].cat === 'flower') TYPES[t].keep = [STEM, LEAF, 0x6b4423];
 TYPES.tree.keep = TYPES.blossom.keep = [0x8a5a33];
 TYPES.fountain.keep = [0x55bdf2, 0x9adbfa];

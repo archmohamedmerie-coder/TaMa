@@ -166,3 +166,5 @@ body.fp .palette{display:none}
   .item img,.swatch .dot{width:34px;height:34px}
   .swatch .dot.num{font-size:22px}
 }
+
+body.fp #mission{display:none}

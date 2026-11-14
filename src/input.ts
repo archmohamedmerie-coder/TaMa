@@ -5,7 +5,7 @@ import { canvas, camera, ghost, setRoomPreview, resize } from './render';
 import { pick, targetFor, planePoint, type Hit } from './pick';
 import { sfx } from './audio';
 import { say, undo, redo } from './ui';
-import { setFinger, clearFinger, heroEye } from './hero';
+import { setFinger, clearFinger, heroEye, lookBy, walkToScreen } from './hero';
 
 // current tool, shared with the palette in ui.ts
 export type Mode = 'build' | 'erase' | 'paint' | 'turn' | 'walk' | 'room' | 'roof';
@@ -80,6 +80,16 @@ export function tap(px: number, py: number) {
     const a = unK(hit.k);
     commit(swapOp(pieceKeys(hit.k), { x: a[0], y: a[1], z: a[2], t: selected, r: hit.v.r, c: hit.v.c })!); sfx.place(selected); return;
   }
+  if (TYPES[selected].hang) {
+    // a ceiling light goes just under the first block above the tapped spot
+    const n = !hit.ground && isBlock(hit.v.t) ? hit.normal : null;
+    const x = hit.cell[0] + (n ? n[0] : 0), z = hit.cell[2] + (n ? n[2] : 0);
+    let y = hit.cell[1] + (n ? n[1] : 0), found = false;
+    for (; y >= 0 && y < H - 1 && inB(x, y, z); y++) { const up = voxels.get(K(x, y + 1, z)); if (up && isBlock(up.t)) { found = true; break; } }
+    const op = found && !voxels.has(K(x, y, z)) ? swapOp([], { x, y, z, t: selected, r: 0 }) : null;
+    if (!op) { sfx.no(); say('المصباح السقفي يحتاج سقفًا فوقه.'); return; }
+    commit(op); sfx.place(selected); return;
+  }
   if (TYPES[selected].opening && !hit.ground && isBlock(hit.v.t)) {
     const o = openingPlacement(hit, selected), op = o && swapOp(o.keys, o.place);
     if (!op) { sfx.no(); say('لا يتسع هذا هنا. جرّبي جدارًا أوسع.'); return; }
@@ -119,7 +129,8 @@ export function setFP(on: boolean) {
 export function placeCamera() {
   if (view.fp) {
     const e = heroEye(), x = e.x - N / 2, z = e.z - N / 2;
-    camera.position.set(x, e.y, z); camera.lookAt(x + Math.sin(e.f), e.y - .06, z + Math.cos(e.f));
+    const cp = Math.cos(e.p);
+    camera.position.set(x, e.y, z); camera.lookAt(x + Math.sin(e.f) * cp, e.y + Math.sin(e.p), z + Math.cos(e.f) * cp);
     return;
   }
   cam.phi = Math.min(1.42, Math.max(.18, cam.phi)); cam.dist = Math.min(72, Math.max(9, cam.dist));
@@ -138,6 +149,7 @@ type Gest =
   | { type: 'tap'; moved: boolean; pan: boolean }
   | { type: 'pinch'; d0: number; dist0: number; mx: number; my: number; a: number }
   | { type: 'walk' }
+  | { type: 'look'; moved: boolean }
   | { type: 'room'; x0: number; z0: number; x1: number; z1: number }
   | { type: 'done' };
 const ptrs = new Map<number, Ptr>(); let gest: Gest | null = null;
@@ -177,7 +189,11 @@ export function initInput() {
     ptrs.set(e.pointerId, { x: e.clientX, y: e.clientY, sx: e.clientX, sy: e.clientY, t: performance.now() });
     if (ptrs.size === 1) {
       // with the walk tool, a finger on the screen is where she walks to
-      if (tool.mode === 'walk' && e.button !== 2 && !e.shiftKey) { gest = { type: 'walk' }; setFinger(e.clientX, e.clientY); }
+      if (tool.mode === 'walk' && e.button !== 2 && !e.shiftKey) {
+        // through her eyes a drag looks around and a tap walks; in the garden view the finger leads her
+        if (view.fp) gest = { type: 'look', moved: false };
+        else { gest = { type: 'walk' }; setFinger(e.clientX, e.clientY); }
+      }
       else if (tool.mode === 'room' && e.button !== 2 && !e.shiftKey) {
         // with the room tool, a drag across the ground draws the room
         const c = groundCell(e.clientX, e.clientY, false);
@@ -194,6 +210,10 @@ export function initInput() {
     const dx = e.clientX - p.x, dy = e.clientY - p.y; p.x = e.clientX; p.y = e.clientY;
     if (!gest) return;
     if (gest.type === 'walk') { if (ptrs.size === 1) setFinger(p.x, p.y); return; }
+    if (gest.type === 'look') {
+      if (ptrs.size === 1) { if (!gest.moved && Math.hypot(p.x - p.sx, p.y - p.sy) > 9) gest.moved = true; if (gest.moved) lookBy(dx, dy); }
+      return;
+    }
     if (gest.type === 'room') {
       const c = ptrs.size === 1 ? groundCell(p.x, p.y, true) : null;
       if (c) { gest.x1 = c[0]; gest.z1 = c[1]; setRoomPreview(sorted(gest)); }
@@ -213,6 +233,7 @@ export function initInput() {
   function up(e: PointerEvent) {
     const p = ptrs.get(e.pointerId); if (!p) return;
     if (gest && gest.type === 'walk') clearFinger();
+    if (gest && gest.type === 'look' && !gest.moved && e.type === 'pointerup' && ptrs.size === 1 && performance.now() - p.t < 700) walkToScreen(e.clientX, e.clientY);
     if (gest && gest.type === 'room') { if (e.type === 'pointerup') buildRoom(gest); setRoomPreview(null); }
     const wasTap = gest && gest.type === 'tap' && !gest.moved && ptrs.size === 1 && performance.now() - p.t < 700 && e.type === 'pointerup';
     ptrs.delete(e.pointerId);

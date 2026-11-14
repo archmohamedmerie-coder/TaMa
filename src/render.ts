@@ -190,15 +190,15 @@ for (let i = 0; i < 4; i++) { const l = new THREE.PointLight(0xffc56b, 0, 7, 1.6
 // the point the lamps are chosen around; main.ts keeps it at the camera target
 export const lightAt = new THREE.Vector3();
 export function updateLife() {
-  flowerCells = []; const lamps: [number, number, number][] = [];
-  voxels.forEach((v, k) => { if (isFlower(v.t)) flowerCells.push(unK(k)); else if (TYPES[v.t].glow && v.of == null) lamps.push(unK(k)); });
+  flowerCells = []; const lamps: number[][] = [];   // x, y, z and how far above the cell the light sits
+  voxels.forEach((v, k) => { if (isFlower(v.t)) flowerCells.push(unK(k)); else if (TYPES[v.t].glow && v.of == null) lamps.push([...unK(k), TYPES[v.t].hang ? .3 : 1.2]); });
   // only four lights are lit: those nearest the middle of the view
   const cx = lightAt.x + N / 2, cz = lightAt.z + N / 2, far = (c: number[]) => (c[0] - cx) ** 2 + (c[2] - cz) ** 2;
   lamps.sort((a, b) => far(a) - far(b));
   const want = Math.min(9, Math.floor(flowerCells.length / 2));
   while (flies.length < want) { const f = makeFly(flies.length); newTarget(f); flies.push(f); }
   while (flies.length > want) { world.remove(flies.pop()!); }
-  lampLights.forEach((l, i) => { const c = lamps[i]; if (c && state.night) { l.position.set(c[0] + .5, c[1] + 1.2, c[2] + .5); l.intensity = 14; } else l.intensity = 0; });
+  lampLights.forEach((l, i) => { const c = lamps[i]; if (c && state.night) { l.position.set(c[0] + .5, c[1] + c[3], c[2] + .5); l.intensity = 14; } else l.intensity = 0; });
 }
 export function applyNight() {
   document.body.classList.toggle('night', state.night);

@@ -118,7 +118,7 @@ export function initUI() {
     const on = !view.fp;
     if (on) setMode('walk');
     setFP(on); $('fpBtn').classList.toggle('on', on);
-    say(on ? 'أنتِ ترين الآن بعينَي صديقتكِ. ضعي إصبعكِ لتمشي، وحرّكيه يمينًا ويسارًا لتلتفتي.' : 'عدتِ إلى منظر الحديقة.', on ? 7000 : 3000);
+    say(on ? 'أنتِ ترين الآن بعينَي صديقتكِ. اسحبي إصبعكِ لتنظري حولكِ، واضغطي على المكان الذي تريدين المشي إليه.' : 'عدتِ إلى منظر الحديقة.', on ? 7000 : 3000);
   };
   $('soundBtn').onclick = () => { state.muted = !state.muted; $('soundBtn').classList.toggle('off', state.muted); save(); };
   $('resetBtn').onclick = () => $('confirm').classList.add('open');
