@@ -59,14 +59,14 @@ export function buildPalette() {
   }).join('');
 }
 
-function setMode(m: Mode) { tool.mode = m; $('tBuild').classList.toggle('on', m === 'build'); $('tErase').classList.toggle('on', m === 'erase'); $('tPaint').classList.toggle('on', m === 'paint'); $('tTurn').classList.toggle('on', m === 'turn'); ghost.visible = false; buildPalette(); }
+function setMode(m: Mode) { tool.mode = m; $('tBuild').classList.toggle('on', m === 'build'); $('tErase').classList.toggle('on', m === 'erase'); $('tPaint').classList.toggle('on', m === 'paint'); $('tTurn').classList.toggle('on', m === 'turn'); $('tWalk').classList.toggle('on', m === 'walk'); ghost.visible = false; buildPalette(); }
 export function syncUndo() { ($('tUndo') as HTMLButtonElement).disabled = !undoStack.length; ($('tRedo') as HTMLButtonElement).disabled = !redoStack.length; }
 export function undo() { if (undoOp()) sfx.turn(); }
 export function redo() { if (redoOp()) sfx.turn(); }
 
 export function initUI() {
   makeThumbs();
-  $('tabs').addEventListener('click', e => { const el = (e.target as HTMLElement).closest<HTMLElement>('.tab'); if (el) { if (tool.mode === 'paint') tool.mode = 'build'; setTab(el.dataset.cat as Cat); setMode(tool.mode); sfx.tick(); } });
+  $('tabs').addEventListener('click', e => { const el = (e.target as HTMLElement).closest<HTMLElement>('.tab'); if (el) { if (tool.mode === 'paint' || tool.mode === 'walk') tool.mode = 'build'; setTab(el.dataset.cat as Cat); setMode(tool.mode); sfx.tick(); } });
   $('items').addEventListener('click', e => {
     const el = (e.target as HTMLElement).closest<HTMLElement>('.item'); if (!el) return;
     if (el.dataset.c !== undefined) { tool.color = el.dataset.c === '' ? null : Number(el.dataset.c); buildPalette(); sfx.tick(); return; }
@@ -78,6 +78,7 @@ export function initUI() {
   $('tErase').onclick = () => { setMode('erase'); say('اضغطي على أي قطعة لإزالتها.', 3000); };
   $('tPaint').onclick = () => { setMode('paint'); say('اختاري لونًا ثم اضغطي على أي قطعة.', 3000); };
   $('tTurn').onclick = () => { setMode('turn'); say('اضغطي على أي قطعة لتدويرها.', 3000); };
+  $('tWalk').onclick = () => { setMode('walk'); say('اضغطي على أي مكان لتمشي صديقتكِ إليه.', 4000); };
   $('tUndo').onclick = undo; $('tRedo').onclick = redo;
   $('makkoBtn').onclick = hint;
   $('missionBtn').onclick = () => { const o = $('mission').classList.toggle('open'); $('missionBtn').setAttribute('aria-expanded', String(o)); };

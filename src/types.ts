@@ -27,11 +27,11 @@ function P(geo: Geo, color: number, pos: V3, rot?: V3): Geo {
   return g;
 }
 // box with its bottom at height yb above the cell floor
-const b = (w: number, h: number, d: number, color: number, x: number, yb: number, z: number, rot?: V3) =>
+export const b = (w: number, h: number, d: number, color: number, x: number, yb: number, z: number, rot?: V3) =>
   P(new THREE.BoxGeometry(w, h, d), color, [x, -0.5 + yb + h / 2, z], rot);
 const cyl = (rt: number, rb: number, h: number, color: number, yb: number, seg?: number) =>
   P(new THREE.CylinderGeometry(rt, rb, h, seg || 8), color, [0, -0.5 + yb + h / 2, 0]);
-function M(parts: Geo[]): Geo {
+export function M(parts: Geo[]): Geo {
   let n = 0; parts.forEach(p => n += p.attributes.position.count);
   const pos = new Float32Array(n * 3), nor = new Float32Array(n * 3), col = new Float32Array(n * 3); let o = 0;
   parts.forEach(p => {

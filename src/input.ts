@@ -5,15 +5,17 @@ import { canvas, camera, ghost } from './render';
 import { pick, targetFor } from './pick';
 import { sfx } from './audio';
 import { say, undo, redo } from './ui';
+import { walkTo } from './hero';
 
 // current tool, shared with the palette in ui.ts
-export type Mode = 'build' | 'erase' | 'paint' | 'turn';
+export type Mode = 'build' | 'erase' | 'paint' | 'turn' | 'walk';
 // color: the paint colour, or null to give a piece its own colours back
 export const tool: { mode: Mode; selected: string; color: number | null } = { mode: 'build', selected: 'rose', color: 0xe5383b };
 
 export function tap(px: number, py: number) {
   const hit = pick(px, py);
   if (!hit) return;
+  if (tool.mode === 'walk') { if (walkTo(hit)) sfx.tick(); return; }
   if (tool.mode === 'erase') {
     if (hit.ground) return;
     const k = K(hit.cell[0], hit.cell[1], hit.cell[2]), op: Op = [{ k, a: hit.v, b: null }];
@@ -69,7 +71,7 @@ const ptrs = new Map<number, Ptr>(); let gest: Gest | null = null;
 
 function hover(px: number, py: number) {
   const hit = pick(px, py); ghost.visible = false;
-  if (!hit) return;
+  if (!hit || tool.mode === 'walk') return;
   let c: number[] | null = null;
   if (tool.mode === 'erase') { if (!hit.ground) c = hit.cell; ghost.material.color.set(0xff4d6d); }
   else if (tool.mode === 'paint' || tool.mode === 'turn') { if (!hit.ground) c = hit.cell; ghost.material.color.set(0xffffff); }

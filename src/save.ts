@@ -1,7 +1,7 @@
 import { voxels, unK, loadWorld, type Entry } from './world';
 
 export const SAVE_KEY = 'makabi-garden-v1';
-export const state = { stars: [false, false, false], night: false, muted: false, seenIntro: false, winShown: false };
+export const state = { stars: [false, false, false], night: false, muted: false, seenIntro: false, winShown: false, hero: null as number[] | null };
 
 let saveTimer: number | undefined;
 export function saveNow() {
