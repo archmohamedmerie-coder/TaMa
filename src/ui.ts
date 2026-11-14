@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { TYPES, CATS, type Cat } from './types';
-import { defaultWorld, replaceWorld, view, undoStack, redoStack, undo as undoOp, redo as redoOp } from './world';
+import { defaultWorld, replaceWorld, view, type RoofShape, undoStack, redoStack, undo as undoOp, redo as redoOp } from './world';
 import { state, save } from './save';
 import { sfx } from './audio';
 import { GEO, baseMat, ghost, applyNight, applyRoofs, extras, reduceMotion } from './render';
@@ -46,11 +46,20 @@ const PAINTS: [string, number | null][] = [['الأصلي', null], ['أحمر', 
 const hex = (c: number) => '#' + c.toString(16).padStart(6, '0');
 // wall materials offered by the room tool
 const WALLS = ['white', 'brick', 'wood', 'stone'];
+// roof tool: shapes (with the piece whose picture stands for them) and materials
+const ROOF_SHAPES: [string, string, string | null][] = [['gable', 'جملون', 'roofTop'], ['hip', 'هرمي', 'roofPeak'], ['shed', 'مائل', 'roof'], ['flat', 'مسطّح', 'roofEdge'], ['none', 'بلا سقف', null]];
+const ROOF_MATS: [string, number | null, string][] = [['قرميد', null, '#c8553d'], ['خشب', 0x9a6b3f, '#9a6b3f'], ['أردواز', 0x6b7280, '#6b7280']];
 let tab: Cat = 'flower';
 export function setTab(c: Cat) { tab = c; buildPalette(); }
 export function buildPalette() {
-  const paint = tool.mode === 'paint' || tool.mode === 'room';
+  const paint = tool.mode === 'paint' || tool.mode === 'room' || tool.mode === 'roof';
   $('tabs').innerHTML = CATS.map(c => '<button class="tab' + (c[0] === tab && !paint ? ' on' : '') + '" data-cat="' + c[0] + '">' + c[1] + '</button>').join('');
+  if (tool.mode === 'roof') {
+    $('items').innerHTML = ROOF_SHAPES.map(s => '<button class="item' + (s[2] ? '' : ' swatch') + (s[0] === tool.roof.shape ? ' on' : '') + '" data-shape="' + s[0] + '">' +
+      (s[2] ? '<img alt="" src="' + THUMB[s[2]] + '">' : '<span class="dot none"></span>') + '<span>' + s[1] + '</span></button>').join('') +
+      ROOF_MATS.map((o, i) => '<button class="item swatch' + (o[1] === tool.roof.color ? ' on' : '') + '" data-mat="' + i + '"><span class="dot" style="background:' + o[2] + '"></span><span>' + o[0] + '</span></button>').join('');
+    return;
+  }
   if (tool.mode === 'room') {
     $('items').innerHTML = WALLS.map(t => '<button class="item' + (t === tool.room.wall ? ' on' : '') + '" data-wall="' + t + '"><img alt="" src="' + THUMB[t] + '"><span>' + TYPES[t].name + '</span></button>').join('') +
       [[1, 'طابق'], [2, 'طابقان']].map(o => '<button class="item swatch' + (o[0] === tool.room.storeys ? ' on' : '') + '" data-storeys="' + o[0] + '"><span class="dot num">' + o[0] + '</span><span>' + o[1] + '</span></button>').join('');
@@ -63,13 +72,13 @@ export function buildPalette() {
   }
   document.querySelector('.tab.on')?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
   const n = starTotal();
-  $('items').innerHTML = Object.keys(TYPES).filter(t => TYPES[t].cat === tab).map(t => {
+  $('items').innerHTML = Object.keys(TYPES).filter(t => TYPES[t].cat === tab && !TYPES[t].hidden).map(t => {
     const T = TYPES[t], locked = !!T.stars && n < T.stars;
     return '<button class="item' + (t === tool.selected && tool.mode === 'build' ? ' on' : '') + (locked ? ' locked' : '') + '" data-t="' + t + '"><img alt="" src="' + THUMB[t] + '"><span>' + T.name + '</span>' + (locked ? '<span class="lock">' + T.stars + STAR_PATH + '</span>' : '') + '</button>';
   }).join('');
 }
 
-function setMode(m: Mode) { tool.mode = m; $('tBuild').classList.toggle('on', m === 'build'); $('tErase').classList.toggle('on', m === 'erase'); $('tPaint').classList.toggle('on', m === 'paint'); $('tTurn').classList.toggle('on', m === 'turn'); $('tWalk').classList.toggle('on', m === 'walk'); $('tRoom').classList.toggle('on', m === 'room'); setRoomPreview(null); ghost.visible = false; buildPalette(); }
+function setMode(m: Mode) { tool.mode = m; $('tBuild').classList.toggle('on', m === 'build'); $('tErase').classList.toggle('on', m === 'erase'); $('tPaint').classList.toggle('on', m === 'paint'); $('tTurn').classList.toggle('on', m === 'turn'); $('tWalk').classList.toggle('on', m === 'walk'); $('tRoom').classList.toggle('on', m === 'room'); $('tRoof').classList.toggle('on', m === 'roof'); setRoomPreview(null); ghost.visible = false; buildPalette(); }
 export function syncUndo() { ($('tUndo') as HTMLButtonElement).disabled = !undoStack.length; ($('tRedo') as HTMLButtonElement).disabled = !redoStack.length; }
 export function undo() { if (undoOp()) sfx.turn(); }
 export function redo() { if (redoOp()) sfx.turn(); }
@@ -78,9 +87,11 @@ export function initUI() {
   makeThumbs();
   const pal = document.querySelector<HTMLElement>('.palette')!;
   new ResizeObserver(() => document.documentElement.style.setProperty('--pal', pal.offsetHeight + 'px')).observe(pal);
-  $('tabs').addEventListener('click', e => { const el = (e.target as HTMLElement).closest<HTMLElement>('.tab'); if (el) { if (tool.mode === 'paint' || tool.mode === 'walk' || tool.mode === 'room') tool.mode = 'build'; setTab(el.dataset.cat as Cat); setMode(tool.mode); sfx.tick(); } });
+  $('tabs').addEventListener('click', e => { const el = (e.target as HTMLElement).closest<HTMLElement>('.tab'); if (el) { if (tool.mode === 'paint' || tool.mode === 'walk' || tool.mode === 'room' || tool.mode === 'roof') tool.mode = 'build'; setTab(el.dataset.cat as Cat); setMode(tool.mode); sfx.tick(); } });
   $('items').addEventListener('click', e => {
     const el = (e.target as HTMLElement).closest<HTMLElement>('.item'); if (!el) return;
+    if (el.dataset.shape) { tool.roof.shape = el.dataset.shape as RoofShape; buildPalette(); sfx.tick(); return; }
+    if (el.dataset.mat) { tool.roof.color = ROOF_MATS[Number(el.dataset.mat)][1]; buildPalette(); sfx.tick(); return; }
     if (el.dataset.wall) { tool.room.wall = el.dataset.wall; buildPalette(); sfx.tick(); return; }
     if (el.dataset.storeys) { tool.room.storeys = Number(el.dataset.storeys); buildPalette(); sfx.tick(); return; }
     if (el.dataset.c !== undefined) { tool.color = el.dataset.c === '' ? null : Number(el.dataset.c); buildPalette(); sfx.tick(); return; }
@@ -94,6 +105,7 @@ export function initUI() {
   $('tTurn').onclick = () => { setMode('turn'); say('اضغطي على أي قطعة لتدويرها.', 3000); };
   $('tWalk').onclick = () => { setMode('walk'); say('ضعي إصبعكِ على الشاشة لتمشي صديقتكِ نحوه.', 4000); };
   $('tRoom').onclick = () => { setMode('room'); say('اسحبي إصبعكِ على الأرض لترسمي غرفة.', 4000); };
+  $('tRoof').onclick = () => { setMode('roof'); say('اختاري شكل السقف ثم اضغطي على البيت.', 4000); };
   $('tUndo').onclick = undo; $('tRedo').onclick = redo;
   $('makkoBtn').onclick = hint;
   $('missionBtn').onclick = () => { const o = $('mission').classList.toggle('open'); $('missionBtn').setAttribute('aria-expanded', String(o)); };

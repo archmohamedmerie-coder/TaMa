@@ -15,6 +15,7 @@ export interface PieceType {
   glass?: () => THREE.BufferGeometry; // see-through panes, drawn separately
   // moving parts: a leaf swings around a hinge (x, z in the piece's own space); with top set it rolls up instead
   leaves?: { geo: () => THREE.BufferGeometry; glass?: boolean; hinge?: [number, number]; dir?: number; top?: number }[];
+  hidden?: boolean;  // not offered in the palette
   roof?: boolean; // hidden while the player looks inside the houses
   solid?: boolean; // fills its cell like a cube: other pieces can be built on and beside it
   keep?: number[]; // part colours that paint does not cover
@@ -101,6 +102,34 @@ const leaf = (xc: number, wd: number, knob: number, col = DOORWOOD, col2 = DOORW
 const barnLeaf = (xc: number) => M([b(.89, 1.83, .08, 0xb5382f, xc, 0, 0), b(.89, .1, .1, WHITE, xc, 0, 0), b(.89, .1, .1, WHITE, xc, 1.73, 0), b(.89, .1, .1, WHITE, xc, .87, 0),
   b(.1, 1.83, .1, WHITE, xc - .395, 0, 0), b(.1, 1.83, .1, WHITE, xc + .395, 0, 0)]);
 
+/* ---------- smooth roof pieces ---------- */
+// A faceted solid from corner points (heights measured from the cell floor) and faces listed by point index.
+// Every face is turned to look away from the point "inside".
+function solid(color: number, pts: number[][], faces: number[][], inside: number[]): Geo {
+  const pos: number[] = [];
+  for (const f of faces) for (let i = 1; i < f.length - 1; i++) {
+    const a = pts[f[0]]; let p = pts[f[i]], q = pts[f[i + 1]];
+    const ux = p[0] - a[0], uy = p[1] - a[1], uz = p[2] - a[2], vx = q[0] - a[0], vy = q[1] - a[1], vz = q[2] - a[2];
+    const nx = uy * vz - uz * vy, ny = uz * vx - ux * vz, nz = ux * vy - uy * vx;
+    const mx = (a[0] + p[0] + q[0]) / 3 - inside[0], my = (a[1] + p[1] + q[1]) / 3 - inside[1], mz = (a[2] + p[2] + q[2]) / 3 - inside[2];
+    if (nx * mx + ny * my + nz * mz < 0) { const t = p; p = q; q = t; }
+    pos.push(a[0], a[1] - .5, a[2], p[0], p[1] - .5, p[2], q[0], q[1] - .5, q[2]);
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  g.computeVertexNormals();
+  const col = new THREE.Color(color), c = new Float32Array(pos.length);
+  for (let i = 0; i < c.length; i += 3) { c[i] = col.r; c[i + 1] = col.g; c[i + 2] = col.b; }
+  g.setAttribute('color', new THREE.BufferAttribute(c, 3));
+  return g;
+}
+const BASE = [[-.5, 0, -.5], [.5, 0, -.5], [.5, 0, .5], [-.5, 0, .5]];
+// all pieces are given turned to r = 0: a slope comes down towards +z, a corner towards +x and +z
+const slopeGeo = (color = ROOF) => solid(color, [...BASE, [-.5, 1, -.5], [.5, 1, -.5]], [[0, 1, 2, 3], [0, 1, 5, 4], [3, 2, 5, 4], [0, 3, 4], [1, 2, 5]], [0, .2, -.2]);
+const tentGeo = (color = ROOF) => solid(color, [...BASE, [-.5, .5, 0], [.5, .5, 0]], [[0, 1, 2, 3], [3, 2, 5, 4], [0, 1, 5, 4], [0, 3, 4], [1, 2, 5]], [0, .1, 0]);
+// the roofing that lies on top of a wall-coloured end piece
+const ROOF_MATS: [string, number][] = [['', ROOF], ['Wood', 0x9a6b3f], ['Slate', 0x6b7280]];
+
 /* ---------- block & item types ---------- */
 export const TYPES: Record<string, PieceType> = {
   grass: { name: 'عشب', cat: 'cube', color: 0x62b84f, geo: () => M([b(1, .78, 1, 0x9a6b3f, 0, 0, 0), b(1, .22, 1, 0x62b84f, 0, .78, 0)]) },
@@ -165,11 +194,20 @@ export const TYPES: Record<string, PieceType> = {
     leaves: [{ geo: () => M([...[-.3, -.15, 0, .15, .3].map(x => b(.1, .5, .06, 0xfbf7ef, x, .04, 0)), b(.8, .06, .05, 0xffffff, 0, .14, 0), b(.8, .06, .05, 0xffffff, 0, .38, 0)]), hinge: [-.4, 0], dir: 1 }] },
 
   plank: { name: 'أرضية خشب', cat: 'house', flat: true, geo: () => M([b(1, .05, 1, 0xc98a4b, 0, 0, 0), b(1, .055, .02, 0x8a5a33, 0, 0, -.25), b(1, .055, .02, 0x8a5a33, 0, 0, .25)]) },
-  roof: { name: 'سقف مائل', cat: 'house', solid: true, roof: true, geo: () => M(STEPS.map(i => b(1, .25, 1 - i * .25, i % 2 ? ROOF2 : ROOF, 0, i * .25, -i * .125))) },
-  roofCorner: { name: 'زاوية سقف', cat: 'house', solid: true, roof: true, geo: () => M(STEPS.map(i => b(1 - i * .25, .25, 1 - i * .25, i % 2 ? ROOF2 : ROOF, -i * .125, i * .25, -i * .125))) },
-  roofTop: { name: 'قمة سقف', cat: 'house', solid: true, roof: true, geo: () => M(STEPS.map(i => b(1, .25, 1 - i * .25, i % 2 ? ROOF2 : ROOF, 0, i * .25, 0))) },
-  roofPeak: { name: 'قمة برج', cat: 'house', solid: true, roof: true, geo: () => M(STEPS.map(i => b(1 - i * .25, .25, 1 - i * .25, i % 2 ? ROOF2 : ROOF, 0, i * .25, 0))) },
-  chimney: { name: 'مدخنة', cat: 'house', roof: true, keep: [DARK], geo: () => M([b(.4, .7, .4, 0xa8523a, 0, 0, 0), b(.5, .1, .5, 0x8c3f2b, 0, .7, 0), b(.3, .04, .3, DARK, 0, .8, 0)]) },
+  /* ---------- roofs (the roof tool lays these out; they can also be placed by hand) ---------- */
+  roof: { name: 'سقف مائل', cat: 'house', solid: true, roof: true, geo: () => M([slopeGeo()]) },
+  roofCorner: { name: 'زاوية سقف', cat: 'house', solid: true, roof: true, geo: () => M([solid(ROOF, [...BASE, [-.5, 1, -.5]], [[0, 1, 2, 3], [0, 3, 4], [0, 1, 4], [4, 3, 2], [4, 2, 1]], [-.2, .15, -.2])]) },
+  roofValley: { name: 'زاوية داخلية', cat: 'house', solid: true, roof: true, geo: () => M([solid(ROOF, [...BASE, [-.5, 1, -.5], [.5, 1, -.5], [-.5, 1, .5]], [[0, 1, 2, 3], [0, 3, 6, 4], [0, 1, 5, 4], [1, 2, 5], [3, 2, 6], [2, 5, 4], [2, 4, 6]], [-.2, .2, -.2])]) },
+  roofTop: { name: 'قمة سقف', cat: 'house', solid: true, roof: true, geo: () => M([tentGeo()]) },
+  roofEnd: { name: 'نهاية قمة', cat: 'house', solid: true, roof: true, geo: () => M([solid(ROOF, [...BASE, [-.5, .5, 0], [0, .5, 0]], [[0, 1, 2, 3], [1, 2, 5], [3, 2, 5, 4], [0, 1, 5, 4], [0, 3, 4]], [-.1, .1, 0])]) },
+  roofPeak: { name: 'قمة برج', cat: 'house', solid: true, roof: true, geo: () => M([solid(ROOF, [...BASE, [0, .5, 0]], [[0, 1, 2, 3], [0, 1, 4], [1, 2, 4], [2, 3, 4], [3, 0, 4]], [0, .1, 0])]) },
+  roofFlat: { name: 'سقف مكعب', cat: 'house', solid: true, roof: true, geo: () => cube(ROOF) },
+  roofSlab: { name: 'سقف مسطّح', cat: 'house', solid: true, roof: true, geo: () => M([b(1, .25, 1, ROOF, 0, 0, 0)]) },
+  roofEdge: { name: 'حافة سقف', cat: 'house', solid: true, roof: true, geo: () => M([b(1, .6, 1, ROOF, 0, 0, 0), b(1.04, .08, 1.04, ROOF2, 0, .6, 0)]) },
+  skylight: { name: 'نافذة سقف', cat: 'house', solid: true, roof: true, keep: [WHITE], geo: () => M([slopeGeo(), b(.6, .05, .7, WHITE, 0, .49, 0, [Math.PI / 4, 0, 0])]), glass: () => M([b(.48, .05, .58, GLASS, 0, .52, 0, [Math.PI / 4, 0, 0])]) },
+  // the wall under a gable or lean-to roof; put in and taken out with the roof
+  gableFill: { name: 'جدار السقف', cat: 'house', solid: true, roof: true, hidden: true, geo: () => cube(WALL) },
+  chimney: { name: 'مدخنة', cat: 'house', roof: true, keep: [DARK], geo: () => M([b(.4, 1.6, .4, 0xa8523a, 0, -.9, 0), b(.5, .1, .5, 0x8c3f2b, 0, .7, 0), b(.3, .04, .3, DARK, 0, .8, 0)]) },
 
   /* ---------- furniture and kitchen (all face +z) ---------- */
   bed: { name: 'سرير', cat: 'furniture', keep: [WOOD2, 0xffffff], geo: () => M([b(.9, .18, .98, WOOD2, 0, 0, 0), b(.9, .5, .08, WOOD2, 0, 0, -.45),
@@ -235,6 +273,14 @@ export const TYPES: Record<string, PieceType> = {
     b(.24, .2, .2, 0xff9d3c, 0, .28, .2), b(.07, .08, .05, 0xff9d3c, .08, .48, .2), b(.07, .08, .05, 0xff9d3c, -.08, .48, .2),
     b(.04, .05, .02, 0x3f9b4b, .06, .38, .3), b(.04, .05, .02, 0x3f9b4b, -.06, .38, .3), b(.04, .03, .02, 0xf06a9b, 0, .34, .3), b(.06, .3, .06, 0xff9d3c, 0, .2, -.3)]) },
 };
+// End pieces for gable and lean-to roofs: the body is wall (and takes the wall's colour),
+// with a layer of roofing on its slope. One set per roofing material.
+for (const [sfx, col] of ROOF_MATS) {
+  TYPES['gableSlope' + sfx] = { name: 'طرف سقف', cat: 'house', solid: true, roof: true, hidden: true, keep: [col],
+    geo: () => M([slopeGeo(WALL), b(1, .1, 1.42, col, 0, .485, .035, [Math.PI / 4, 0, 0])]) };
+  TYPES['gableTop' + sfx] = { name: 'طرف قمة', cat: 'house', solid: true, roof: true, hidden: true, keep: [col],
+    geo: () => M([tentGeo(WALL), b(1, .1, .72, col, 0, .235, .285, [Math.PI / 4, 0, 0]), b(1, .1, .72, col, 0, .235, -.285, [-Math.PI / 4, 0, 0])]) };
+}
 export const CATS: [Cat, string][] = [['flower', 'زهور'], ['cube', 'مكعبات'], ['open', 'فتحات'], ['house', 'بيت'], ['furniture', 'أثاث'], ['decor', 'حديقة'], ['animal', 'مزرعة'], ['street', 'شارع']];
 for (const t in TYPES) if (TYPES[t].cat === 'flower') TYPES[t].keep = [STEM, LEAF, 0x6b4423];
 TYPES.tree.keep = TYPES.blossom.keep = [0x8a5a33];

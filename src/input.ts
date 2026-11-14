@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { TYPES, isBlock } from './types';
-import { N, H, K, unK, inB, voxels, commit, cellsOf, sizeOf, type Placement, swapOp, pieceKeys, anchorKey, turnStep, roomOp } from './world';
+import { N, H, K, unK, inB, voxels, commit, cellsOf, sizeOf, type Placement, swapOp, pieceKeys, anchorKey, turnStep, roomOp, roofOp, type RoofShape } from './world';
 import { canvas, camera, ghost, setRoomPreview } from './render';
 import { pick, targetFor, planePoint, type Hit } from './pick';
 import { sfx } from './audio';
@@ -8,13 +8,14 @@ import { say, undo, redo } from './ui';
 import { setFinger, clearFinger } from './hero';
 
 // current tool, shared with the palette in ui.ts
-export type Mode = 'build' | 'erase' | 'paint' | 'turn' | 'walk' | 'room';
+export type Mode = 'build' | 'erase' | 'paint' | 'turn' | 'walk' | 'room' | 'roof';
 // one storey is three cells high: room for a two-cell door under a lintel
 export const STOREY = 3;
 // color: the paint colour, or null to give a piece its own colours back
 // room: the wall material and number of storeys used by the room tool
-export const tool: { mode: Mode; selected: string; color: number | null; room: { wall: string; storeys: number } } =
-  { mode: 'build', selected: 'rose', color: 0xe5383b, room: { wall: 'white', storeys: 1 } };
+// roof: the shape and colour used by the roof tool (null colour = red tiles)
+export const tool: { mode: Mode; selected: string; color: number | null; room: { wall: string; storeys: number }; roof: { shape: RoofShape; color: number | null } } =
+  { mode: 'build', selected: 'rose', color: 0xe5383b, room: { wall: 'white', storeys: 1 }, roof: { shape: 'gable', color: null } };
 
 // Where a window or door goes when a wall is tapped: in the wall, facing out of the tapped side,
 // in the wall's own colour. Returns null when it does not fit there.
@@ -49,6 +50,11 @@ export function tap(px: number, py: number) {
   const hit = pick(px, py);
   if (!hit) return;
   if (tool.mode === 'walk' || tool.mode === 'room') return;
+  if (tool.mode === 'roof') {
+    const op = hit.ground ? null : roofOp(hit.cell[0], hit.cell[1], hit.cell[2], tool.roof.shape, tool.roof.color == null ? undefined : tool.roof.color);
+    if (!op) { sfx.no(); say(hit.ground ? 'اضغطي على جدار البيت لأضع له سقفًا.' : tool.roof.shape === 'none' ? 'لا يوجد سقف هنا.' : 'لا يوجد مكان لسقف فوق هذا الجدار.'); return; }
+    commit(op); tool.roof.shape === 'none' ? sfx.remove() : sfx.place('roof'); return;
+  }
   if (tool.mode === 'erase') {
     if (hit.ground) return;
     const keys = pieceKeys(hit.k);
@@ -69,6 +75,11 @@ export function tap(px: number, py: number) {
   }
   if (tool.mode === 'turn') { if (!hit.ground) turnPiece(hit.k); return; }
   const selected = tool.selected;
+  if (selected === 'skylight' && !hit.ground && hit.v.t === 'roof') {
+    // a roof window takes the place of the slope that was tapped
+    const a = unK(hit.k);
+    commit(swapOp(pieceKeys(hit.k), { x: a[0], y: a[1], z: a[2], t: selected, r: hit.v.r, c: hit.v.c })!); sfx.place(selected); return;
+  }
   if (TYPES[selected].opening && !hit.ground && isBlock(hit.v.t)) {
     const o = openingPlacement(hit, selected), op = o && swapOp(o.keys, o.place);
     if (!op) { sfx.no(); say('لا يتسع هذا هنا. جرّبي جدارًا أوسع.'); return; }
@@ -119,7 +130,7 @@ function hover(px: number, py: number) {
   if (!hit || tool.mode === 'walk' || tool.mode === 'room') return;
   let c: number[] | null = null;
   if (tool.mode === 'erase') { if (!hit.ground) c = hit.cell; ghost.material.color.set(0xff4d6d); }
-  else if (tool.mode === 'paint' || tool.mode === 'turn') { if (!hit.ground) c = hit.cell; ghost.material.color.set(0xffffff); }
+  else if (tool.mode === 'paint' || tool.mode === 'turn' || tool.mode === 'roof') { if (!hit.ground) c = hit.cell; ghost.material.color.set(0xffffff); }
   else if (TYPES[tool.selected].opening && !hit.ground && isBlock(hit.v.t)) { c = hit.cell; ghost.material.color.set(0xffffff); }
   else { const tg = targetFor(hit, tool.selected); if (tg && 'cell' in tg) c = tg.cell; ghost.material.color.set(0xffffff); }
   if (c) { ghost.position.set(c[0] + .5, c[1] + .5, c[2] + .5); ghost.visible = true; }

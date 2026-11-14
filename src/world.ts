@@ -140,3 +140,113 @@ export function roomOp(x0: number, z0: number, x1: number, z1: number, h: number
   }
   return [...m.values()];
 }
+
+/* ---------- automatic roofs ---------- */
+export type RoofShape = 'gable' | 'hip' | 'shed' | 'flat' | 'none';
+// Roof the building whose wall (or old roof) is at the given cell. The footprint is the ring of wall tops
+// connected to that wall plus whatever it encloses. An existing roof over it is replaced.
+// Returns null when there is no wall there or no room above it.
+export function roofOp(cx: number, cy: number, cz: number, shape: RoofShape, color?: number): Op | null {
+  const wall = (x: number, y: number, z: number) => { const v = voxels.get(K(x, y, z)); return inB(x, y, z) && !!v && isBlock(v.t) && !TYPES[v.t].roof; };
+  let top = cy; while (top > 0 && !wall(cx, top, cz)) top--;
+  if (!wall(cx, top, cz)) return null;
+  while (wall(cx, top + 1, cz)) top++;
+  const id = (x: number, z: number) => x + N * z;
+  // the connected run of wall tops at this height
+  const ring = new Set<number>(), todo: [number, number][] = [[cx, cz]];
+  let x0 = cx, x1 = cx, z0 = cz, z1 = cz;
+  while (todo.length) {
+    const [x, z] = todo.pop()!;
+    if (ring.has(id(x, z)) || !wall(x, top, z) || wall(x, top + 1, z)) continue;
+    ring.add(id(x, z)); x0 = Math.min(x0, x); x1 = Math.max(x1, x); z0 = Math.min(z0, z); z1 = Math.max(z1, z);
+    todo.push([x + 1, z], [x - 1, z], [x, z + 1], [x, z - 1]);
+  }
+  // everything the ring encloses: what a flood from outside its bounding box cannot reach
+  const out = new Set<number>(), go: [number, number][] = [[x0 - 1, z0 - 1]];
+  while (go.length) {
+    const [x, z] = go.pop()!;
+    if (x < x0 - 1 || x > x1 + 1 || z < z0 - 1 || z > z1 + 1 || out.has(id(x, z)) || ring.has(id(x, z))) continue;
+    out.add(id(x, z)); go.push([x + 1, z], [x - 1, z], [x, z + 1], [x, z - 1]);
+  }
+  const R: [number, number][] = [];
+  for (let x = x0; x <= x1; x++) for (let z = z0; z <= z1; z++) if (!out.has(id(x, z))) R.push([x, z]);
+  const inR = (x: number, z: number) => x >= x0 && x <= x1 && z >= z0 && z <= z1 && !out.has(id(x, z));
+
+  const m = new Map<number, Edit>();
+  // take away the old roof
+  for (const [x, z] of R) for (let y = top + 1; y < H; y++) {
+    const k = K(x, y, z), v = voxels.get(k);
+    if (v && TYPES[v.t].roof) for (const q of pieceKeys(anchorKey(k))) if (!m.has(q)) m.set(q, { k: q, a: voxels.get(q)!, b: null });
+  }
+  const put = (x: number, y: number, z: number, t: string, r: number, c?: number) => {
+    if (!inB(x, y, z)) return;
+    const k = K(x, y, z), e = m.get(k), b: Voxel = { t, r, c };
+    if (e) e.b = b; else if (!voxels.has(k)) m.set(k, { k, a: null, b });
+  };
+  const maxL = H - 1 - top;
+  if (shape !== 'none' && maxL < 1) return null;
+  // the gable wall takes the colour of the wall it stands on
+  const wv = voxels.get(anchorKey(K(cx, top, cz)))!, wt = TYPES[wv.t];
+  const wallC = wv.c != null ? wv.c : wt.cat === 'cube' && wv.t !== 'white' ? wt.color : undefined;
+
+  if (shape === 'flat') {
+    for (const [x, z] of R) {
+      const edge = !inR(x + 1, z) || !inR(x - 1, z) || !inR(x, z + 1) || !inR(x, z - 1);
+      put(x, top + 1, z, edge ? 'roofEdge' : 'roofSlab', 0, color);
+    }
+  } else if (shape !== 'none') {
+    // d: how many cells in from the eaves, which is also how many levels up the piece sits
+    const d = new Map<number, number>();
+    const run = (x: number, z: number, dx: number, dz: number) => { let n = 0; while (inR(x + dx * (n + 1), z + dz * (n + 1))) n++; return n; };
+    // slopes run across the shorter side, so the ridge follows the longer one
+    const ax: [number, number] = z1 - z0 <= x1 - x0 ? [0, 1] : [1, 0];
+    if (shape === 'hip') {
+      let layer = R.filter(([x, z]) => { for (let i = -1; i <= 1; i++) for (let j = -1; j <= 1; j++) if (!inR(x + i, z + j)) return true; return false; });
+      for (let n = 1; layer.length; n++) {
+        layer.forEach(([x, z]) => d.set(id(x, z), n));
+        const next = new Map<number, [number, number]>();
+        for (const [x, z] of layer) for (let i = -1; i <= 1; i++) for (let j = -1; j <= 1; j++)
+          if (inR(x + i, z + j) && !d.has(id(x + i, z + j))) next.set(id(x + i, z + j), [x + i, z + j]);
+        layer = [...next.values()];
+      }
+    } else for (const [x, z] of R) {
+      const lo = run(x, z, -ax[0], -ax[1]), hi = run(x, z, ax[0], ax[1]);
+      d.set(id(x, z), 1 + (shape === 'shed' ? lo : Math.min(lo, hi)));
+    }
+    // end pieces come in one set per roofing material
+    const sfx = color === 0x9a6b3f ? 'Wood' : color === 0x6b7280 ? 'Slate' : '';
+    const edge = (x: number, z: number) => !inR(x + 1, z) || !inR(x - 1, z) || !inR(x, z + 1) || !inR(x, z - 1);
+    const gableEnd = (x: number, z: number) => !inR(x + ax[1], z + ax[0]) || !inR(x - ax[1], z - ax[0]);   // open towards the ridge direction
+    const lower = (x: number, z: number, dx: number, dz: number) => !inR(x + dx, z + dz) || d.get(id(x + dx, z + dz))! < d.get(id(x, z))!;
+    const facing = (dx: number, dz: number) => dz === 1 ? 0 : dx === 1 ? 2 : dz === -1 ? 4 : 6;           // a slope coming down towards (dx, dz)
+    const diagonal = (sx: number, sz: number) => sx === 1 ? (sz === 1 ? 0 : 2) : sz === -1 ? 4 : 6;      // a corner coming down towards (sx, sz)
+    for (const [x, z] of R) {
+      const dd = d.get(id(x, z))!, L = Math.min(dd, maxL), y = top + L;
+      // gable and lean-to roofs leave an open triangle at the sides: close it with wall
+      if (shape !== 'hip' && (!inR(x + 1, z) || !inR(x - 1, z) || !inR(x, z + 1) || !inR(x, z - 1))) for (let f = top + 1; f < y; f++) put(x, f, z, 'gableFill', 0, wallC);
+      if (dd > maxL) { put(x, y, z, 'roofFlat', 0, color); continue; }
+      if (shape === 'shed') { if (edge(x, z)) put(x, y, z, 'gableSlope' + sfx, facing(-ax[0], -ax[1]), wallC); else put(x, y, z, 'roof', facing(-ax[0], -ax[1]), color); continue; }
+      if (shape === 'gable') {
+        const a = lower(x, z, ax[0], ax[1]), b = lower(x, z, -ax[0], -ax[1]);
+        const end = gableEnd(x, z), r = a && b ? (ax[1] ? 0 : 2) : a ? facing(ax[0], ax[1]) : facing(-ax[0], -ax[1]);
+        if (end) put(x, y, z, (a && b ? 'gableTop' : 'gableSlope') + sfx, r, wallC);
+        else put(x, y, z, a && b ? 'roofTop' : 'roof', r, color);
+        continue;
+      }
+      const px = lower(x, z, 1, 0), nx = lower(x, z, -1, 0), pz = lower(x, z, 0, 1), nz = lower(x, z, 0, -1), n = +px + +nx + +pz + +nz;
+      if (n === 4) put(x, y, z, 'roofPeak', 0, color);
+      else if (n === 3) put(x, y, z, 'roofEnd', !nx ? 0 : !pz ? 2 : !px ? 4 : 6, color);       // the ridge carries on towards the side that is not lower
+      else if (n === 2 && pz && nz) put(x, y, z, 'roofTop', 0, color);
+      else if (n === 2 && px && nx) put(x, y, z, 'roofTop', 2, color);
+      else if (n === 2) put(x, y, z, 'roofCorner', diagonal(px ? 1 : -1, pz ? 1 : -1), color);
+      else if (n === 1) put(x, y, z, 'roof', px ? 2 : nx ? 6 : pz ? 0 : 4, color);
+      else {
+        // an inside corner of an L-shaped house: lower only towards one diagonal
+        const v = [[1, 1], [1, -1], [-1, -1], [-1, 1]].find(s => lower(x, z, s[0], s[1]));
+        if (v) put(x, y, z, 'roofValley', diagonal(v[0], v[1]), color); else put(x, y, z, 'roofFlat', 0, color);
+      }
+    }
+  }
+  const op = [...m.values()];
+  return op.length ? op : null;
+}
