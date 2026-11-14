@@ -31,7 +31,7 @@ function tick(now: number) {
   const dt = Math.min(.05, (now - last) / 1000); last = now;
   if (dirty.size) { dirty.forEach(t => rebuild(t)); dirty.clear(); }
   updateHero(dt, now);
-  { const h = heroCell(); updateDoors(dt, h[0], h[1], h[2]); updateInside(h[0], h[1], h[2], cam.theta, tool.mode); }
+  { const h = heroCell(); updateDoors(dt, h[0], h[1], h[2]); updateInside(h[0], h[1], h[2], cam.theta, view.fp ? 'fp' : tool.mode); }
   placeCamera();
   if (!reduceMotion) animate(dt, now);
   renderer.render(scene, camera);

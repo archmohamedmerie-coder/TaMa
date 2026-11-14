@@ -1,11 +1,11 @@
 import * as THREE from 'three';
 import { TYPES, isBlock } from './types';
-import { N, H, K, unK, inB, voxels, commit, cellsOf, offCell, sizeOf, type Placement, swapOp, pieceKeys, anchorKey, turnStep, roomOp, roofOp, type RoofShape } from './world';
-import { canvas, camera, ghost, setRoomPreview } from './render';
+import { N, H, K, unK, inB, voxels, commit, cellsOf, offCell, sizeOf, type Placement, swapOp, pieceKeys, anchorKey, turnStep, roomOp, roofOp, view, type RoofShape } from './world';
+import { canvas, camera, ghost, setRoomPreview, resize } from './render';
 import { pick, targetFor, planePoint, type Hit } from './pick';
 import { sfx } from './audio';
 import { say, undo, redo } from './ui';
-import { setFinger, clearFinger } from './hero';
+import { setFinger, clearFinger, heroEye } from './hero';
 
 // current tool, shared with the palette in ui.ts
 export type Mode = 'build' | 'erase' | 'paint' | 'turn' | 'walk' | 'room' | 'roof';
@@ -110,7 +110,18 @@ export function tap(px: number, py: number) {
 
 /* ---------- camera & input ---------- */
 export const cam = { theta: -.5, phi: .9, dist: 34, target: new THREE.Vector3(-1.5, 0, 3.5) };
+// switch between the garden view and the view through the girl's eyes
+export function setFP(on: boolean) {
+  view.fp = on; camera.near = on ? .08 : .5;
+  document.body.classList.toggle('fp', on);   // the palette steps aside for the view
+  resize();
+}
 export function placeCamera() {
+  if (view.fp) {
+    const e = heroEye(), x = e.x - N / 2, z = e.z - N / 2;
+    camera.position.set(x, e.y, z); camera.lookAt(x + Math.sin(e.f), e.y - .06, z + Math.cos(e.f));
+    return;
+  }
   cam.phi = Math.min(1.42, Math.max(.18, cam.phi)); cam.dist = Math.min(72, Math.max(9, cam.dist));
   cam.target.x = Math.min(N / 2, Math.max(-N / 2, cam.target.x)); cam.target.z = Math.min(N / 2, Math.max(-N / 2, cam.target.z));
   const s = Math.sin(cam.phi);

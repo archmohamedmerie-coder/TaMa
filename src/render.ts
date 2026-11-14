@@ -187,7 +187,7 @@ export function animate(dt: number, now: number) {
 
 export function resize() {
   const w = canvas.clientWidth, h = canvas.clientHeight;
-  renderer.setSize(w, h, false); camera.aspect = w / h; camera.fov = w < h ? 52 : 42; camera.updateProjectionMatrix();
+  renderer.setSize(w, h, false); camera.aspect = w / h; camera.fov = view.fp ? 74 : w < h ? 52 : 42; camera.updateProjectionMatrix();
 }
 
 const roomGhost = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: .35, depthWrite: false }));

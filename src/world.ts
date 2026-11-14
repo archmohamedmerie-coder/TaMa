@@ -20,7 +20,8 @@ export const inB = (x: number, y: number, z: number) => x >= 0 && x < N && z >= 
 export const dirty = new Set<string>();
 // view options that are not part of the saved world
 // hidden: anchor keys of pieces not drawn or tapped right now (see inside.ts)
-export const view = { hideRoofs: false, hidden: new Set<number>() };
+// fp: looking through the girl's eyes
+export const view = { hideRoofs: false, hidden: new Set<number>(), fp: false };
 
 // wired in main.ts so this module stays free of UI, audio and rendering
 export const hooks = { afterChange: () => {}, syncUndo: () => {} };

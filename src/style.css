@@ -134,3 +134,21 @@ button:focus-visible{outline:3px solid var(--berry);outline-offset:2px}
 /* eight tools: always two columns */
 .tools{grid-template-columns:1fr 1fr;gap:8px}
 .swatch .dot.num{display:grid;place-items:center;font-size:30px;font-weight:800;background:#efe9f7;color:var(--plum);direction:ltr}
+
+/* tools: one slim column down the side; two columns only when the screen is too short for it */
+.tools{grid-template-columns:1fr;gap:5px;top:66px;transform:none;inset-inline-end:8px}
+.tool{width:48px;height:48px;border-radius:14px;font-size:10px;border-width:2px;padding:3px 0 1px}
+.tool svg{width:21px;height:21px}
+.round.on{background:var(--plum)}
+.round.on svg{stroke:#fff}
+@media (max-width:640px){
+  .tools{top:56px;gap:4px}
+  .tool{width:42px;height:42px;font-size:9px}
+  .tool svg{width:19px;height:19px}
+  .round{width:40px;height:40px}
+  .actions{gap:6px}
+}
+@media (max-height:620px){.tools{grid-template-columns:1fr 1fr}}
+
+/* through her eyes: the palette steps aside so the view fills the screen */
+body.fp .palette{display:none}

@@ -20,8 +20,9 @@ export function updateInside(px: number, py: number, pz: number, theta: number, 
   const base = py - py % STOREY;
   // above her storey: anything from the next storey up, and the floor slab that is her ceiling
   const above = (v: Voxel | undefined, y: number) => !!v && (y >= base + STOREY || (y === base + STOREY - 1 && v.t === 'floorSlab'));
-  // with the roof tool the roof must stay visible, or a new roof would seem not to appear
-  if (mode !== 'roof') {
+  // with the roof tool the roof must stay visible, or a new roof would seem not to appear;
+  // through her eyes ('fp') nothing is cut away: ceilings and walls belong to the view
+  if (mode !== 'roof' && mode !== 'fp') {
     let seed = -1;
     for (let y = py + 1; y < H && seed < 0; y++) if (above(voxels.get(K(cx, y, cz)), y)) seed = K(cx, y, cz);
     if (seed >= 0) {

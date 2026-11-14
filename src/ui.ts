@@ -5,7 +5,7 @@ import { state, save } from './save';
 import { sfx } from './audio';
 import { GEO, baseMat, ghost, applyNight, applyRoofs, extras, reduceMotion } from './render';
 import { STAR_PATH, starTotal, hint } from './mission';
-import { tool, type Mode } from './input';
+import { tool, setFP, type Mode } from './input';
 import { setRoomPreview } from './render';
 
 export const $ = (id: string) => document.getElementById(id) as HTMLElement;
@@ -78,7 +78,10 @@ export function buildPalette() {
   }).join('');
 }
 
-function setMode(m: Mode) { tool.mode = m; $('tBuild').classList.toggle('on', m === 'build'); $('tErase').classList.toggle('on', m === 'erase'); $('tPaint').classList.toggle('on', m === 'paint'); $('tTurn').classList.toggle('on', m === 'turn'); $('tWalk').classList.toggle('on', m === 'walk'); $('tRoom').classList.toggle('on', m === 'room'); $('tRoof').classList.toggle('on', m === 'roof'); setRoomPreview(null); ghost.visible = false; buildPalette(); }
+function setMode(m: Mode) {
+  // the view through her eyes belongs to walking; any other tool returns to the garden view
+  if (m !== 'walk' && view.fp) { setFP(false); $('fpBtn').classList.remove('on'); }
+  tool.mode = m; $('tBuild').classList.toggle('on', m === 'build'); $('tErase').classList.toggle('on', m === 'erase'); $('tPaint').classList.toggle('on', m === 'paint'); $('tTurn').classList.toggle('on', m === 'turn'); $('tWalk').classList.toggle('on', m === 'walk'); $('tRoom').classList.toggle('on', m === 'room'); $('tRoof').classList.toggle('on', m === 'roof'); setRoomPreview(null); ghost.visible = false; buildPalette(); }
 export function syncUndo() { ($('tUndo') as HTMLButtonElement).disabled = !undoStack.length; ($('tRedo') as HTMLButtonElement).disabled = !redoStack.length; }
 export function undo() { if (undoOp()) sfx.turn(); }
 export function redo() { if (redoOp()) sfx.turn(); }
@@ -111,6 +114,12 @@ export function initUI() {
   $('missionBtn').onclick = () => { const o = $('mission').classList.toggle('open'); $('missionBtn').setAttribute('aria-expanded', String(o)); };
   $('nightBtn').onclick = () => { state.night = !state.night; applyNight(); save(); say(state.night ? 'حلّ الليل. الفوانيس تضيء الحديقة.' : 'أشرقت الشمس من جديد.', 3000); };
   $('roofBtn').onclick = () => { view.hideRoofs = !view.hideRoofs; applyRoofs(); ghost.visible = false; $('roofBtn').classList.toggle('off', view.hideRoofs); say(view.hideRoofs ? 'أخفيتُ الأسقف. الآن ترين داخل البيوت.' : 'عادت الأسقف إلى مكانها.', 3000); };
+  $('fpBtn').onclick = () => {
+    const on = !view.fp;
+    if (on) setMode('walk');
+    setFP(on); $('fpBtn').classList.toggle('on', on);
+    say(on ? 'أنتِ ترين الآن بعينَي صديقتكِ. ضعي إصبعكِ لتمشي، وحرّكيه يمينًا ويسارًا لتلتفتي.' : 'عدتِ إلى منظر الحديقة.', on ? 7000 : 3000);
+  };
   $('soundBtn').onclick = () => { state.muted = !state.muted; $('soundBtn').classList.toggle('off', state.muted); save(); };
   $('resetBtn').onclick = () => $('confirm').classList.add('open');
   $('confirmNo').onclick = () => $('confirm').classList.remove('open');

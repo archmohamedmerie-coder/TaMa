@@ -1,8 +1,8 @@
 import * as THREE from 'three';
 import { TYPES, isBlock, b, M } from './types';
-import { N, H, OFF, K, inB, voxels, type Voxel } from './world';
+import { N, H, OFF, K, inB, voxels, view, type Voxel } from './world';
 import { state, save } from './save';
-import { world, baseMat, reduceMotion } from './render';
+import { world, baseMat, canvas, reduceMotion } from './render';
 import { planePoint } from './pick';
 import { cam, tool } from './input';
 
@@ -94,7 +94,16 @@ export function initHero() {
 export function updateHero(dt: number, now: number) {
   let walking = false;
   if (finger && tool.mode !== 'walk') clearFinger();
-  if (finger) {
+  if (finger && view.fp) {
+    // through her eyes: a finger on the screen walks her forward, and its place left or right of the middle turns her
+    const r = canvas.getBoundingClientRect(), nx = Math.max(-1, Math.min(1, ((finger.x - r.left) / r.width - .5) * 2.4));
+    facing -= nx * Math.abs(nx) * 2.6 * dt;
+    if ((finger.y - r.top) / r.height < .88) {           // a finger at the very bottom only turns
+      const step = SPEED * .8 * dt, dx = Math.sin(facing) * step, dz = Math.cos(facing) * step;
+      walking = tryMove(dx, dz) || tryMove(dx, 0) || tryMove(0, dz);
+    }
+    cam.target.lerp(v3.set(px - N / 2, py, pz - N / 2), Math.min(1, dt * 3));
+  } else if (finger) {
     // she heads for the spot under the finger, on the level she is standing on
     const p = planePoint(finger.x, finger.y, py);
     if (p) {
@@ -112,11 +121,16 @@ export function updateHero(dt: number, now: number) {
   }
   shownY += (py - shownY) * Math.min(1, dt * 14);
   hero.position.set(px, shownY + .5, pz);
+  hero.visible = !view.fp;
+  bob = walking && !reduceMotion ? Math.sin(now * .014) * .02 : 0;
   const turn = ((facing - hero.rotation.y + Math.PI) % (Math.PI * 2) + Math.PI * 2) % (Math.PI * 2) - Math.PI;
   hero.rotation.y += turn * Math.min(1, dt * 12);
   const swing = walking && !reduceMotion ? Math.sin(now * .014) * .7 : 0;
   legL.rotation.x = swing; legR.rotation.x = -swing; armL.rotation.x = -swing * .8; armR.rotation.x = swing * .8;
 }
 
+let bob = 0;
+// where her eyes are and which way she looks, in world cells
+export const heroEye = () => ({ x: px, y: shownY + .72 + bob, z: pz, f: facing });
 // for tests from the console
 export const heroCell = () => [px, py, pz];
