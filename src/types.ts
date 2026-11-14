@@ -8,6 +8,7 @@ export interface PieceType {
   stars?: number;
   flat?: boolean;
   glow?: boolean;
+  keep?: number[]; // part colours that paint does not cover
 }
 type V3 = [number, number, number];
 type Geo = THREE.BufferGeometry;
@@ -89,5 +90,10 @@ export const TYPES: Record<string, PieceType> = {
     b(.1, .1, .1, 0xffffff, 0, .14, -.28), b(.04, .05, .02, 0x2b2140, -.07, .4, .26), b(.04, .05, .02, 0x2b2140, .07, .4, .26), b(.05, .04, .02, 0xf06a9b, 0, .33, .26)]) }
 };
 export const CATS: [Cat, string][] = [['flower', 'زهور'], ['cube', 'مكعبات'], ['decor', 'زينة']];
+for (const t in TYPES) if (TYPES[t].cat === 'flower') TYPES[t].keep = [STEM, LEAF, 0x6b4423];
+TYPES.tree.keep = TYPES.blossom.keep = [0x8a5a33];
+TYPES.fountain.keep = [0x55bdf2, 0x9adbfa];
+TYPES.lantern.keep = [0x4a4458];
+TYPES.bunny.keep = [0x2b2140, 0xf06a9b, 0xf7a8c4];
 export const isCube = (t: string) => TYPES[t].cat === 'cube';
 export const isFlower = (t: string) => TYPES[t].cat === 'flower';

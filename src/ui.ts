@@ -1,11 +1,11 @@
 import * as THREE from 'three';
 import { TYPES, CATS, type Cat } from './types';
-import { defaultWorld, loadWorld, undoStack, redoStack, hooks, undo as undoOp, redo as redoOp } from './world';
+import { defaultWorld, replaceWorld, undoStack, redoStack, undo as undoOp, redo as redoOp } from './world';
 import { state, save } from './save';
 import { sfx } from './audio';
 import { GEO, baseMat, ghost, applyNight, reduceMotion } from './render';
 import { STAR_PATH, starTotal, hint } from './mission';
-import { tool } from './input';
+import { tool, type Mode } from './input';
 
 export const $ = (id: string) => document.getElementById(id) as HTMLElement;
 
@@ -38,10 +38,20 @@ function makeThumbs() {
   });
   r.dispose();
 }
+// paint colours; null gives a piece its own colours back
+const PAINTS: [string, number | null][] = [['الأصلي', null], ['أحمر', 0xe5383b], ['برتقالي', 0xff8c2e], ['أصفر', 0xffd24a], ['أخضر', 0x4fb35a], ['سماوي', 0x4fb7ee],
+  ['أزرق', 0x3a66d6], ['بنفسجي', 0x9b6fd6], ['وردي', 0xf08fb6], ['أبيض', 0xf6f2ea], ['بني', 0x9a6b3f], ['رمادي', 0x8c8c99]];
+const hex = (c: number) => '#' + c.toString(16).padStart(6, '0');
 let tab: Cat = 'flower';
 export function setTab(c: Cat) { tab = c; buildPalette(); }
 export function buildPalette() {
-  $('tabs').innerHTML = CATS.map(c => '<button class="tab' + (c[0] === tab ? ' on' : '') + '" data-cat="' + c[0] + '">' + c[1] + '</button>').join('');
+  const paint = tool.mode === 'paint';
+  $('tabs').innerHTML = CATS.map(c => '<button class="tab' + (c[0] === tab && !paint ? ' on' : '') + '" data-cat="' + c[0] + '">' + c[1] + '</button>').join('');
+  if (paint) {
+    $('items').innerHTML = PAINTS.map(p => '<button class="item swatch' + (p[1] === tool.color ? ' on' : '') + '" data-c="' + (p[1] == null ? '' : p[1]) + '"><span class="dot' +
+      (p[1] == null ? ' none"' : '" style="background:' + hex(p[1]) + '"') + '></span><span>' + p[0] + '</span></button>').join('');
+    return;
+  }
   const n = starTotal();
   $('items').innerHTML = Object.keys(TYPES).filter(t => TYPES[t].cat === tab).map(t => {
     const T = TYPES[t], locked = !!T.stars && n < T.stars;
@@ -49,22 +59,24 @@ export function buildPalette() {
   }).join('');
 }
 
-function setMode(m: 'build' | 'erase') { tool.mode = m; $('tBuild').classList.toggle('on', m === 'build'); $('tErase').classList.toggle('on', m === 'erase'); ghost.visible = false; buildPalette(); }
+function setMode(m: Mode) { tool.mode = m; $('tBuild').classList.toggle('on', m === 'build'); $('tErase').classList.toggle('on', m === 'erase'); $('tPaint').classList.toggle('on', m === 'paint'); ghost.visible = false; buildPalette(); }
 export function syncUndo() { ($('tUndo') as HTMLButtonElement).disabled = !undoStack.length; ($('tRedo') as HTMLButtonElement).disabled = !redoStack.length; }
 export function undo() { if (undoOp()) sfx.turn(); }
 export function redo() { if (redoOp()) sfx.turn(); }
 
 export function initUI() {
   makeThumbs();
-  $('tabs').addEventListener('click', e => { const el = (e.target as HTMLElement).closest<HTMLElement>('.tab'); if (el) { setTab(el.dataset.cat as Cat); sfx.tick(); } });
+  $('tabs').addEventListener('click', e => { const el = (e.target as HTMLElement).closest<HTMLElement>('.tab'); if (el) { if (tool.mode === 'paint') tool.mode = 'build'; setTab(el.dataset.cat as Cat); setMode(tool.mode); sfx.tick(); } });
   $('items').addEventListener('click', e => {
     const el = (e.target as HTMLElement).closest<HTMLElement>('.item'); if (!el) return;
+    if (el.dataset.c !== undefined) { tool.color = el.dataset.c === '' ? null : Number(el.dataset.c); buildPalette(); sfx.tick(); return; }
     const t = el.dataset.t!, T = TYPES[t];
     if (T.stars && starTotal() < T.stars) { sfx.no(); say(T.stars === 1 ? 'هذه القطعة تُفتح بعد أول نجمة.' : 'هذه القطعة تُفتح عندما تجمعين ' + T.stars + ' نجوم.'); return; }
     tool.selected = t; setMode('build'); sfx.tick();
   });
   $('tBuild').onclick = () => setMode('build');
   $('tErase').onclick = () => { setMode('erase'); say('اضغطي على أي قطعة لإزالتها.', 3000); };
+  $('tPaint').onclick = () => { setMode('paint'); say('اختاري لونًا ثم اضغطي على أي قطعة.', 3000); };
   $('tUndo').onclick = undo; $('tRedo').onclick = redo;
   $('makkoBtn').onclick = hint;
   $('missionBtn').onclick = () => { const o = $('mission').classList.toggle('open'); $('missionBtn').setAttribute('aria-expanded', String(o)); };
@@ -72,7 +84,8 @@ export function initUI() {
   $('soundBtn').onclick = () => { state.muted = !state.muted; $('soundBtn').classList.toggle('off', state.muted); save(); };
   $('resetBtn').onclick = () => $('confirm').classList.add('open');
   $('confirmNo').onclick = () => $('confirm').classList.remove('open');
-  $('confirmYes').onclick = () => { $('confirm').classList.remove('open'); loadWorld(defaultWorld()); undoStack.length = 0; redoStack.length = 0; syncUndo(); hooks.afterChange(); say('حديقة جديدة جاهزة!'); };
+  $('confirmYes').onclick = () => { $('confirm').classList.remove('open'); replaceWorld(defaultWorld()); say('حديقة جديدة جاهزة!'); };
+  $('confirmEmpty').onclick = () => { $('confirm').classList.remove('open'); replaceWorld([]); say('أرض فارغة! ابني ما تحبين.'); };
   $('winBtn').onclick = () => { $('win').classList.remove('open'); save(); };
   $('startBtn').onclick = () => { sfx.star(); $('intro').classList.remove('open'); state.seenIntro = true; save(); say('مرحبًا! أنا مكّو. هيا نملأ الحديقة بالزهور.', 6000); };
 }

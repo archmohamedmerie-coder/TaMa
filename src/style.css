@@ -113,3 +113,8 @@ button:focus-visible{outline:3px solid var(--berry);outline-offset:2px}
   .tab.pulse,.confetti{animation:none}
   .confetti{display:none}
 }
+
+/* paint swatches */
+.swatch .dot{width:50px;height:50px;border-radius:14px;border:2px solid var(--line);display:block}
+.swatch .dot.none{background:repeating-linear-gradient(45deg,#fff 0 6px,#e6dff2 6px 12px)}
+@media (max-width:640px){.swatch .dot{width:44px;height:44px}}

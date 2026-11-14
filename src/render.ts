@@ -56,24 +56,59 @@ const MESH: Record<string, THREE.InstancedMesh> = {};
 Object.keys(TYPES).forEach(t => GEO[t] = TYPES[t].geo());
 
 const dummy = new THREE.Object3D(), tint = new THREE.Color();
-export function rebuild(t: string) {
-  const list: number[] = []; voxels.forEach((v, k) => { if (v.t === t) list.push(k); });
-  let m = MESH[t];
+// A painted piece is drawn from two geometries: the paintable parts in grey shades
+// (tinted per instance with the chosen colour) and the parts that keep their own colour.
+const SPLIT: Record<string, { paint: THREE.BufferGeometry; keep: THREE.BufferGeometry | null }> = {};
+function splitPaint(t: string) {
+  const g = GEO[t], keep = (TYPES[t].keep || []).map(h => new THREE.Color(h));
+  const pos = g.attributes.position.array, nor = g.attributes.normal.array, col = g.attributes.color.array;
+  const A = { p: [] as number[], n: [] as number[], c: [] as number[] }, B = { p: [] as number[], n: [] as number[], c: [] as number[] };
+  let maxL = 0;
+  for (let i = 0; i < g.attributes.position.count; i++) {
+    const r = col[i * 3], gr = col[i * 3 + 1], bl = col[i * 3 + 2];
+    const kept = keep.some(k => Math.abs(k.r - r) < 1e-4 && Math.abs(k.g - gr) < 1e-4 && Math.abs(k.b - bl) < 1e-4);
+    const o = kept ? B : A;
+    o.p.push(pos[i * 3], pos[i * 3 + 1], pos[i * 3 + 2]); o.n.push(nor[i * 3], nor[i * 3 + 1], nor[i * 3 + 2]);
+    if (kept) o.c.push(r, gr, bl);
+    else { const l = .2126 * r + .7152 * gr + .0722 * bl; maxL = Math.max(maxL, l); o.c.push(l, l, l); }
+  }
+  for (let i = 0; i < A.c.length; i++) A.c[i] /= maxL || 1;
+  const make = (o: typeof A) => {
+    const q = new THREE.BufferGeometry();
+    q.setAttribute('position', new THREE.Float32BufferAttribute(o.p, 3));
+    q.setAttribute('normal', new THREE.Float32BufferAttribute(o.n, 3));
+    q.setAttribute('color', new THREE.Float32BufferAttribute(o.c, 3));
+    return q;
+  };
+  return { paint: make(A), keep: B.p.length ? make(B) : null };
+}
+function fill(key: string, geo: THREE.BufferGeometry, t: string, list: number[], painted: boolean) {
+  let m = MESH[key];
   if (!m || m.userData.cap < list.length) {
     if (m) { world.remove(m); m.dispose(); }
     const cap = Math.max(64, Math.pow(2, Math.ceil(Math.log2(list.length + 1))));
-    m = new THREE.InstancedMesh(GEO[t], TYPES[t].glow ? glowMat : baseMat, cap);
+    m = new THREE.InstancedMesh(geo, TYPES[t].glow ? glowMat : baseMat, cap);
     m.userData.cap = cap; m.frustumCulled = false; m.castShadow = !TYPES[t].flat; m.receiveShadow = true;
-    world.add(m); MESH[t] = m;
+    world.add(m); MESH[key] = m;
   }
   list.forEach((k, i) => {
     const c = unK(k), v = voxels.get(k)!;
-    dummy.position.set(c[0] + .5, c[1] + .5, c[2] + .5); dummy.rotation.set(0, (v.r || 0) * Math.PI / 2, 0); dummy.updateMatrix();
+    dummy.position.set(c[0] + .5, c[1] + .5, c[2] + .5); dummy.rotation.set(0, (v.r || 0) * Math.PI / 4, 0); dummy.updateMatrix();
     m.setMatrixAt(i, dummy.matrix);
     const j = isCube(t) ? .95 + ((c[0] * 7 + c[1] * 13 + c[2] * 29) % 10) / 100 : 1;
-    m.setColorAt(i, tint.setRGB(j, j, j));
+    m.setColorAt(i, painted ? tint.setHex(v.c!).multiplyScalar(j) : tint.setRGB(j, j, j));
   });
   m.count = list.length; m.instanceMatrix.needsUpdate = true; if (m.instanceColor) m.instanceColor.needsUpdate = true;
+}
+export function rebuild(t: string) {
+  const plain: number[] = [], painted: number[] = [];
+  voxels.forEach((v, k) => { if (v.t === t) (v.c == null ? plain : painted).push(k); });
+  fill(t, GEO[t], t, plain, false);
+  if (painted.length || MESH[t + '#p']) {
+    const s = SPLIT[t] || (SPLIT[t] = splitPaint(t));
+    fill(t + '#p', s.paint, t, painted, true);
+    if (s.keep) fill(t + '#k', s.keep, t, painted, false);
+  }
 }
 
 // cell highlight under the pointer

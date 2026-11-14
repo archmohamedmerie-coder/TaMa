@@ -20,7 +20,7 @@
     <div class="actions">
       <button class="round" id="nightBtn" aria-label="نهار أو ليل"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="4.200"/><path d="M12 2.500v2.500M12 19v2.500M2.500 12H5M19 12h2.500M5.300 5.300l1.800 1.800M16.900 16.900l1.800 1.800M5.300 18.700l1.800-1.800M16.900 7.100l1.800-1.800"/></svg></button>
       <button class="round" id="soundBtn" aria-label="الصوت"><svg viewBox="0 0 24 24"><path d="M4 9.500v5h3.500L12 18.500v-13L7.500 9.500z"/><path d="M15.500 9a4.500 4.500 0 010 6M18 6.500a8 8 0 010 11"/></svg></button>
-      <button class="round" id="resetBtn" aria-label="حديقة جديدة"><svg viewBox="0 0 24 24"><path d="M4 12a8 8 0 108-8H7"/><path d="M10 1L7 4l3 3"/></svg></button>
+      <button class="round" id="resetBtn" aria-label="بداية جديدة"><svg viewBox="0 0 24 24"><path d="M4 12a8 8 0 108-8H7"/><path d="M10 1L7 4l3 3"/></svg></button>
     </div>
   </div>
 
@@ -33,6 +33,7 @@
   <div class="tools">
     <button class="tool on" id="tBuild"><svg viewBox="0 0 24 24"><path d="M12 3l8 4.500v9L12 21l-8-4.500v-9z"/><path d="M4 7.500l8 4.500 8-4.500M12 12v9"/></svg>بناء</button>
     <button class="tool" id="tErase"><svg viewBox="0 0 24 24"><path d="M8 20h12M5 15l9-9 5 5-9 9H8z"/><path d="M11 9l5 5"/></svg>إزالة</button>
+    <button class="tool" id="tPaint"><svg viewBox="0 0 24 24"><path d="M12 3c4 5 6 8 6 11a6 6 0 01-12 0c0-3 2-6 6-11z"/></svg>تلوين</button>
     <button class="tool" id="tUndo" disabled><svg viewBox="0 0 24 24"><path d="M9 7H15a5 5 0 010 10H8"/><path d="M12 3.500L15.500 7 12 10.500" transform="translate(24 0) scale(-1 1)"/></svg>تراجع</button>
     <button class="tool" id="tRedo" disabled><svg viewBox="0 0 24 24"><path d="M15 7H9a5 5 0 000 10h7"/><path d="M12 3.500L15.500 7 12 10.500"/></svg>إعادة</button>
   </div>
@@ -66,10 +67,11 @@
 
   <div class="overlay" id="confirm">
     <div class="card">
-      <h1>حديقة جديدة؟</h1>
-      <p>ستعود الحديقة كما كانت في البداية. نجومكِ تبقى معكِ.</p>
+      <h1>بداية جديدة؟</h1>
+      <p>اختاري كيف تبدئين. نجومكِ تبقى معكِ، وزر التراجع يعيد حديقتكِ.</p>
       <div class="row">
-        <button class="btn" id="confirmYes">نعم، حديقة جديدة</button>
+        <button class="btn" id="confirmYes">حديقة البداية</button>
+        <button class="btn" id="confirmEmpty">أرض فارغة</button>
         <button class="btn ghost" id="confirmNo">لا، أكملي حديقتي</button>
       </div>
     </div>
