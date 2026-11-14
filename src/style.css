@@ -126,4 +126,7 @@ button:focus-visible{outline:3px solid var(--berry);outline-offset:2px}
 /* six tabs: let the row scroll instead of squeezing the labels */
 .tabs{overflow-x:auto;scrollbar-width:none}
 .tabs::-webkit-scrollbar{display:none}
-.tab{flex:1 0 auto}
+.tab{flex:1 1 auto;min-width:max-content}
+
+/* makko sits just above the palette, whatever its height */
+.makko{bottom:calc(var(--pal,150px) + 22px)}

@@ -66,6 +66,8 @@ export function redo() { if (redoOp()) sfx.turn(); }
 
 export function initUI() {
   makeThumbs();
+  const pal = document.querySelector<HTMLElement>('.palette')!;
+  new ResizeObserver(() => document.documentElement.style.setProperty('--pal', pal.offsetHeight + 'px')).observe(pal);
   $('tabs').addEventListener('click', e => { const el = (e.target as HTMLElement).closest<HTMLElement>('.tab'); if (el) { if (tool.mode === 'paint' || tool.mode === 'walk') tool.mode = 'build'; setTab(el.dataset.cat as Cat); setMode(tool.mode); sfx.tick(); } });
   $('items').addEventListener('click', e => {
     const el = (e.target as HTMLElement).closest<HTMLElement>('.item'); if (!el) return;
