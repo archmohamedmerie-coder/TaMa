@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { TYPES, isBlock } from './types';
-import { N, H, K, unK, inB, voxels, commit, cellsOf, offCell, sizeOf, type Placement, type Op, type Cell, swapOp, pieceKeys, anchorKey, turnStep, roomOp, roofOp, view, dirty, isLoose, type RoofShape } from './world';
+import { N, H, K, unK, inB, voxels, commit, cellsOf, offCell, sizeOf, type Placement, type Op, type Cell, swapOp, pieceKeys, anchorKey, turnStep, roomOp, roofOp, view, dirty, isLoose, isSizable, SIZE_MIN, SIZE_MAX, type RoofShape } from './world';
 import { canvas, camera, ghost, setRoomPreview, resize } from './render';
 import { pick, targetFor, planePoint, type Hit } from './pick';
 import { sfx } from './audio';
@@ -8,7 +8,7 @@ import { say, undo, redo } from './ui';
 import { setFinger, clearFinger, heroEye, lookBy, walkToScreen } from './hero';
 
 // current tool, shared with the palette in ui.ts
-export type Mode = 'build' | 'erase' | 'paint' | 'turn' | 'move' | 'walk' | 'room' | 'roof';
+export type Mode = 'build' | 'erase' | 'paint' | 'turn' | 'move' | 'size' | 'walk' | 'room' | 'roof';
 // one storey is three cells high: room for a two-cell door under a lintel
 export const STOREY = 3;
 // color: the paint colour, or null to give a piece its own colours back
@@ -42,7 +42,7 @@ function openingPlacement(hit: Hit, sel: string): { keys: number[]; place: Place
 }
 function turnPiece(ak: number) {
   const v = voxels.get(ak)!, a = unK(ak);
-  const op = swapOp(pieceKeys(ak), { x: a[0], y: a[1], z: a[2], t: v.t, r: ((v.r || 0) + turnStep(v.t)) % 8, c: v.c, o: v.o });
+  const op = swapOp(pieceKeys(ak), { x: a[0], y: a[1], z: a[2], t: v.t, r: ((v.r || 0) + turnStep(v.t)) % 8, c: v.c, o: v.o, s: v.s });
   if (!op) { sfx.no(); say('لا يوجد مكان كافٍ للتدوير هنا.'); return; }
   commit(op); sfx.turn();
 }
@@ -100,7 +100,7 @@ function moveTarget(px: number, py: number, ak: number, gx = 0, gz = 0): { cells
     if (fx < 0 || fx >= N || fz < 0 || fz >= N) return null;
     const s = looseSpot(fx, level, fz, v.t, v.r, own), under = level > 0 ? voxels.get(K(s.x, level - 1, s.z)) : undefined;
     const cells = cellsOf(s.x, level, s.z, v.t, v.r).filter(c => inB(c[0], c[1], c[2]));
-    const op = level === 0 || (under && isBlock(under.t)) ? swapOp(own, { x: s.x, y: level, z: s.z, t: v.t, r: v.r, c: v.c, o: s.o }) : null;
+    const op = level === 0 || (under && isBlock(under.t)) ? swapOp(own, { x: s.x, y: level, z: s.z, t: v.t, r: v.r, c: v.c, o: s.o, s: v.s }) : null;
     // where it fits it is drawn at the spot it would take; where it does not, right under the finger
     return { cells, op, same: false, at: op ? [s.x + .5 + s.o[0], level, s.z + .5 + s.o[1]] : [fx, level, fz] };
   }
@@ -115,7 +115,7 @@ function moveTarget(px: number, py: number, ak: number, gx = 0, gz = 0): { cells
   }
   const cells = cellsOf(x, y, z, v.t, v.r).filter(c => inB(c[0], c[1], c[2]));
   const same = x === a[0] && y === a[1] && z === a[2];
-  return { cells, op: ok ? swapOp(own, { x, y, z, t: v.t, r: v.r, c: v.c }) : null, same };
+  return { cells, op: ok ? swapOp(own, { x, y, z, t: v.t, r: v.r, c: v.c, s: v.s }) : null, same };
 }
 // the preview box, stretched over the cells the piece would cover: green where it fits, red where it does not
 function showMove(m: { cells: Cell[]; op: Op | null; at?: [number, number, number] } | null, ak: number) {
@@ -138,10 +138,19 @@ function endMove(ak: number, px: number, py: number, drop: boolean, gx = 0, gz =
   if (!m.op) { sfx.no(); say('لا يوجد مكان كافٍ هنا. جرّبي مكانًا آخر.', 3000); return; }
   commit(m.op); sfx.place(v.t);
 }
+/* ---------- changing a piece's size: press it and drag up to grow it, down to shrink it ---------- */
+const sizeFor = (s0: number, dx: number, dy: number) => Math.round(Math.max(SIZE_MIN, Math.min(SIZE_MAX, s0 * Math.exp((dx - dy) * .006))) * 100) / 100;
+function endSize(ak: number, s: number | null) {
+  const v = voxels.get(ak);
+  view.sizing = null; if (v) dirty.add(v.t);
+  if (!v || s == null || s === (v.s || 1)) return;
+  const a = unK(ak), op = swapOp(pieceKeys(ak), { x: a[0], y: a[1], z: a[2], t: v.t, r: v.r, c: v.c, o: v.o, s });
+  if (op) { commit(op); sfx.turn(); }
+}
 export function tap(px: number, py: number) {
   const hit = pick(px, py);
   if (!hit) return;
-  if (tool.mode === 'walk' || tool.mode === 'room' || tool.mode === 'move') return;
+  if (tool.mode === 'walk' || tool.mode === 'room' || tool.mode === 'move' || tool.mode === 'size') return;
   if (tool.mode === 'roof') {
     const op = hit.ground ? null : roofOp(hit.cell[0], hit.cell[1], hit.cell[2], tool.roof.shape, tool.roof.color == null ? undefined : tool.roof.color);
     if (!op) { sfx.no(); say(hit.ground ? 'اضغطي على جدار البيت لأضع له سقفًا.' : tool.roof.shape === 'none' ? 'لا يوجد سقف هنا.' : 'لا يوجد مكان لسقف فوق هذا الجدار.'); return; }
@@ -163,7 +172,7 @@ export function tap(px: number, py: number) {
     const c = tool.color == null ? undefined : tool.color;
     if (hit.v.c === c) return;
     const a = unK(hit.k);
-    commit(swapOp(pieceKeys(hit.k), { x: a[0], y: a[1], z: a[2], t: hit.v.t, r: hit.v.r, c, o: hit.v.o })!); sfx.turn(); return;
+    commit(swapOp(pieceKeys(hit.k), { x: a[0], y: a[1], z: a[2], t: hit.v.t, r: hit.v.r, c, o: hit.v.o, s: hit.v.s })!); sfx.turn(); return;
   }
   if (tool.mode === 'turn') { if (!hit.ground) turnPiece(hit.k); return; }
   const selected = tool.selected;
@@ -250,6 +259,7 @@ type Gest =
   | { type: 'look'; moved: boolean }
   | { type: 'room'; x0: number; z0: number; x1: number; z1: number }
   | { type: 'move'; k: number; moved: boolean; gx: number; gz: number }
+  | { type: 'size'; k: number; s0: number; s: number; moved: boolean }
   | { type: 'done' };
 const ptrs = new Map<number, Ptr>(); let gest: Gest | null = null;
 
@@ -258,7 +268,7 @@ function hover(px: number, py: number) {
   if (!hit || tool.mode === 'walk' || tool.mode === 'room') return;
   let c: number[] | null = null;
   if (tool.mode === 'erase') { if (!hit.ground) c = hit.cell; ghost.material.color.set(0xff4d6d); }
-  else if (tool.mode === 'paint' || tool.mode === 'turn' || tool.mode === 'move' || tool.mode === 'roof') { if (!hit.ground) c = hit.cell; ghost.material.color.set(0xffffff); }
+  else if (tool.mode === 'paint' || tool.mode === 'turn' || tool.mode === 'move' || tool.mode === 'size' || tool.mode === 'roof') { if (!hit.ground) c = hit.cell; ghost.material.color.set(0xffffff); }
   else if (TYPES[tool.selected].opening && !hit.ground && isBlock(hit.v.t)) { c = hit.cell; ghost.material.color.set(0xffffff); }
   else { const tg = targetFor(hit, tool.selected); if (tg && 'cell' in tg) c = tg.cell; ghost.material.color.set(0xffffff); }
   if (c) { ghost.position.set(c[0] + .5, c[1] + .5, c[2] + .5); ghost.visible = true; }
@@ -307,9 +317,15 @@ export function initInput() {
           gest = { type: 'move', k: hit.k, moved: false, gx: p ? a[0] + .5 + (o ? o[0] : 0) - p[0] : 0, gz: p ? a[2] + .5 + (o ? o[1] : 0) - p[1] : 0 };
         } else gest = { type: 'tap', moved: false, pan: false };
       }
+      else if (tool.mode === 'size' && e.button !== 2 && !e.shiftKey) {
+        // with the size tool, a finger on a piece takes hold of its size; on empty ground it turns the view as usual
+        const hit = pick(e.clientX, e.clientY);
+        if (hit && !hit.ground && isSizable(hit.v.t)) { const s0 = hit.v.s || 1; gest = { type: 'size', k: hit.k, s0, s: s0, moved: false }; }
+        else { if (hit && !hit.ground) say('هذه القطعة لا يتغيّر حجمها. جرّبي الأثاث أو الحيوانات أو الأشجار.', 3500); gest = { type: 'tap', moved: false, pan: false }; }
+      }
       else gest = { type: 'tap', moved: false, pan: e.button === 2 || e.shiftKey };
     }
-    else if (ptrs.size === 2) { const a = [...ptrs.values()]; if (gest && gest.type === 'move') endMove(gest.k, 0, 0, false); gest = { type: 'pinch', d0: Math.hypot(a[0].x - a[1].x, a[0].y - a[1].y) || 1, dist0: cam.dist, mx: (a[0].x + a[1].x) / 2, my: (a[0].y + a[1].y) / 2, a: Math.atan2(a[1].y - a[0].y, a[1].x - a[0].x) }; clearFinger(); setRoomPreview(null); }
+    else if (ptrs.size === 2) { const a = [...ptrs.values()]; if (gest && gest.type === 'move') endMove(gest.k, 0, 0, false); if (gest && gest.type === 'size') endSize(gest.k, null); gest = { type: 'pinch', d0: Math.hypot(a[0].x - a[1].x, a[0].y - a[1].y) || 1, dist0: cam.dist, mx: (a[0].x + a[1].x) / 2, my: (a[0].y + a[1].y) / 2, a: Math.atan2(a[1].y - a[0].y, a[1].x - a[0].x) }; clearFinger(); setRoomPreview(null); }
     ghost.visible = false;
   });
   canvas.addEventListener('pointermove', e => {
@@ -320,6 +336,12 @@ export function initInput() {
     if (gest.type === 'walk') { if (ptrs.size === 1) setFinger(p.x, p.y); return; }
     if (gest.type === 'look') {
       if (ptrs.size === 1) { if (!gest.moved && Math.hypot(p.x - p.sx, p.y - p.sy) > 9) gest.moved = true; if (gest.moved) lookBy(dx, dy); }
+      return;
+    }
+    if (gest.type === 'size') {
+      if (ptrs.size !== 1) return;
+      if (!gest.moved && Math.hypot(p.x - p.sx, p.y - p.sy) > 9) gest.moved = true;
+      if (gest.moved) { gest.s = sizeFor(gest.s0, p.x - p.sx, p.y - p.sy); view.sizing = { k: gest.k, s: gest.s }; const v = voxels.get(gest.k); if (v) dirty.add(v.t); }
       return;
     }
     if (gest.type === 'move') {
@@ -349,6 +371,7 @@ export function initInput() {
     if (gest && gest.type === 'walk') clearFinger();
     if (gest && gest.type === 'look' && !gest.moved && e.type === 'pointerup' && ptrs.size === 1 && performance.now() - p.t < 700) walkToScreen(e.clientX, e.clientY);
     if (gest && gest.type === 'room') { if (e.type === 'pointerup') buildRoom(gest); setRoomPreview(null); }
+    if (gest && gest.type === 'size') endSize(gest.k, gest.moved && e.type === 'pointerup' && ptrs.size === 1 ? gest.s : null);
     if (gest && gest.type === 'move') endMove(gest.k, e.clientX, e.clientY, gest.moved && e.type === 'pointerup' && ptrs.size === 1, gest.gx, gest.gz);
     const wasTap = gest && gest.type === 'tap' && !gest.moved && ptrs.size === 1 && performance.now() - p.t < 700 && e.type === 'pointerup';
     ptrs.delete(e.pointerId);

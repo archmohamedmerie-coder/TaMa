@@ -133,7 +133,8 @@ function fill(key: string, geo: THREE.BufferGeometry, t: string, list: number[],
   list.forEach((k, i) => {
     const c = unK(k), v = voxels.get(k)!;
     // a floor under a piece keeps its own direction and is never hidden with the piece; a new piece grows up from the floor
-    const s = floor ? 1 : view.hidden.has(k) ? 0 : popScale(k);
+    const z = view.sizing && view.sizing.k === k ? view.sizing.s : v.s || 1;
+    const s = floor ? 1 : view.hidden.has(k) ? 0 : popScale(k) * z;
     if (floor) dummy.position.set(c[0] + .5, c[1] + .5, c[2] + .5);
     else { const q = place(k, c, v); dummy.position.set(q.x, q.y + .5 * s, q.z); }
     dummy.rotation.set(0, floor || fixed ? 0 : (v.r || 0) * Math.PI / 4, 0); dummy.scale.setScalar(s); dummy.updateMatrix();
@@ -229,8 +230,9 @@ function animals(now: number) {
       const ph = (k * 37) % 100;
       // a slow look around, and now and then a small hop
       const hop = Math.pow(Math.max(0, Math.sin(now * .0021 + ph)), 14) * .14;
-      const q = place(k, c, v); dummy.position.set(q.x, q.y + .5 + hop, q.z);
-      dummy.rotation.set(0, (v.r || 0) * Math.PI / 4 + Math.sin(now * .0009 + ph) * .3, 0); dummy.scale.setScalar(1); dummy.updateMatrix();
+      const z = view.sizing && view.sizing.k === k ? view.sizing.s : v.s || 1;
+      const q = place(k, c, v); dummy.position.set(q.x, q.y + .5 * z + hop * z, q.z);
+      dummy.rotation.set(0, (v.r || 0) * Math.PI / 4 + Math.sin(now * .0009 + ph) * .3, 0); dummy.scale.setScalar(z); dummy.updateMatrix();
       m.setMatrixAt(i, dummy.matrix);
     }
     m.instanceMatrix.needsUpdate = true;
