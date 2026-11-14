@@ -6,7 +6,8 @@ export const G = 20, OFF = (N - G) / 2;
 
 // r: rotation in steps of 45° (0–7). c: optional paint colour (0xRRGGBB).
 // of: set on the extra cells of a piece larger than one cell; it holds the key of the piece's anchor cell.
-export interface Voxel { t: string; r: number; c?: number; of?: number }
+// f: the floor piece lying under this one. A floor stays when furniture is put on it and shows again when the furniture goes.
+export interface Voxel { t: string; r: number; c?: number; of?: number; f?: string }
 export type Entry = [number, number, number, string, number, number?];
 export interface Edit { k: number; a: Voxel | null; b: Voxel | null }
 export type Op = Edit[];
@@ -18,7 +19,8 @@ export const unK = (k: number): Cell => { const x = k % N, z = Math.floor(k / N)
 export const inB = (x: number, y: number, z: number) => x >= 0 && x < N && z >= 0 && z < N && y >= 0 && y < H;
 export const dirty = new Set<string>();
 // view options that are not part of the saved world
-export const view = { hideRoofs: false };
+// hidden: anchor keys of pieces not drawn or tapped right now (see inside.ts)
+export const view = { hideRoofs: false, hidden: new Set<number>() };
 
 // wired in main.ts so this module stays free of UI, audio and rendering
 export const hooks = { afterChange: () => {}, syncUndo: () => {} };
@@ -29,12 +31,16 @@ export const sizeOf = (t: string): Cell => TYPES[t].size || ONE;
 // a piece with a 1×1 footprint turns in steps of 45°; a wider one in quarter turns, so it stays on the grid
 export const turnStep = (t: string) => { const s = sizeOf(t); return s[0] === 1 && s[2] === 1 ? 1 : 2; };
 // every cell a piece covers, anchor first. It extends from the anchor along its own +x, +y and +z.
+// the cell at offset o = [i, j, k] (along the piece's own x, y, z) from an anchor, for a piece turned to r
+export function offCell(x: number, y: number, z: number, o: number[], r: number): Cell {
+  const q = (r >> 1) & 3, i = o[0], k = o[2];
+  return [x + (q === 0 ? i : q === 1 ? k : q === 2 ? -i : -k), y + o[1], z + (q === 0 ? k : q === 1 ? -i : q === 2 ? -k : i)];
+}
 export function cellsOf(x: number, y: number, z: number, t: string, r: number): Cell[] {
-  const [w, h, d] = sizeOf(t), q = (r >> 1) & 3, out: Cell[] = [];
-  for (let j = 0; j < h; j++) for (let i = 0; i < w; i++) for (let k = 0; k < d; k++) {
-    const dx = q === 0 ? i : q === 1 ? k : q === 2 ? -i : -k, dz = q === 0 ? k : q === 1 ? -i : q === 2 ? -k : i;
-    out.push([x + dx, y + j, z + dz]);
-  }
+  const custom = TYPES[t].cells;
+  if (custom) return custom.map(o => offCell(x, y, z, o, r));
+  const [w, h, d] = sizeOf(t), out: Cell[] = [];
+  for (let j = 0; j < h; j++) for (let i = 0; i < w; i++) for (let k = 0; k < d; k++) out.push(offCell(x, y, z, [i, j, k], r));
   return out;
 }
 export const anchorKey = (k: number) => { const v = voxels.get(k); return v && v.of != null ? v.of : k; };
@@ -50,15 +56,19 @@ export interface Placement { x: number; y: number; z: number; t: string; r: numb
 // Returns null when the new piece does not fit (off the land, or over something that is not being cleared).
 export function swapOp(removeKeys: number[], place: Placement | null): Op | null {
   const m = new Map<number, Edit>();
-  removeKeys.forEach(k => m.set(k, { k, a: voxels.get(k)!, b: null }));
+  // a removed piece leaves the floor it stood on
+  removeKeys.forEach(k => { const a = voxels.get(k)!; m.set(k, { k, a, b: a.f ? { t: a.f, r: 0 } : null }); });
   if (place) {
-    const ak = K(place.x, place.y, place.z), cells = cellsOf(place.x, place.y, place.z, place.t, place.r);
+    const ak = K(place.x, place.y, place.z), cells = cellsOf(place.x, place.y, place.z, place.t, place.r), flat = !!TYPES[place.t].flat;
     for (let i = 0; i < cells.length; i++) {
       const c = cells[i]; if (!inB(c[0], c[1], c[2])) return null;
-      const k = K(c[0], c[1], c[2]), e = m.get(k);
-      if (!e && voxels.has(k)) return null;
+      const k = K(c[0], c[1], c[2]), e = m.get(k), cur = voxels.get(k);
+      // a floor in the way is no obstacle: the piece stands on it
+      if (!e && cur && !(TYPES[cur.t].flat && cur.of == null)) return null;
+      const under = cur ? cur.f || (TYPES[cur.t].flat ? cur.t : undefined) : undefined;
       const b: Voxel = { t: place.t, r: place.r, c: place.c }; if (i) b.of = ak;
-      if (e) e.b = b; else m.set(k, { k, a: null, b });
+      if (under && !flat) b.f = under;
+      if (e) e.b = b; else m.set(k, { k, a: cur || null, b });
     }
   }
   return [...m.values()];
@@ -93,9 +103,11 @@ function build(list: Entry[]): Map<number, Voxel> {
   });
   return m;
 }
-export function loadWorld(list: Entry[]) {
+// floors: [x, y, z, type] for every cell where a floor lies under another piece
+export function loadWorld(list: Entry[], floors?: [number, number, number, string][]) {
   voxels.clear();
   build(list).forEach((v, k) => voxels.set(k, v));
+  (floors || []).forEach(e => { const v = inB(e[0], e[1], e[2]) ? voxels.get(K(e[0], e[1], e[2])) : undefined; if (v && TYPES[e[3]]?.flat && !TYPES[v.t].flat) v.f = e[3]; });
   Object.keys(TYPES).forEach(t => dirty.add(t));
 }
 
@@ -104,8 +116,8 @@ export const undoStack: Op[] = [], redoStack: Op[] = [];
 export function applyOp(op: Op, fwd: boolean) {
   op.forEach(e => {
     const v = fwd ? e.b : e.a, old = voxels.get(e.k);
-    if (old) dirty.add(old.t);
-    if (v) { voxels.set(e.k, { ...v }); dirty.add(v.t); } else voxels.delete(e.k);
+    if (old) { dirty.add(old.t); if (old.f) dirty.add(old.f); }
+    if (v) { voxels.set(e.k, { ...v }); dirty.add(v.t); if (v.f) dirty.add(v.f); } else voxels.delete(e.k);
   });
   hooks.afterChange();
 }
@@ -115,7 +127,7 @@ export function redo(): boolean { const op = redoStack.pop(); if (!op) return fa
 // swap the whole world for another one as a single undoable step
 export function replaceWorld(list: Entry[]) {
   const next = build(list), op: Op = [];
-  voxels.forEach((v, k) => { const b = next.get(k) || null; if (!b || b.t !== v.t || b.r !== v.r || b.c !== v.c || b.of !== v.of) op.push({ k, a: v, b }); });
+  voxels.forEach((v, k) => { const b = next.get(k) || null; if (!b || b.t !== v.t || b.r !== v.r || b.c !== v.c || b.of !== v.of || b.f !== v.f) op.push({ k, a: v, b }); });
   next.forEach((b, k) => { if (!voxels.has(k)) op.push({ k, a: null, b }); });
   if (op.length) commit(op);
 }
@@ -136,6 +148,8 @@ export function roomOp(x0: number, z0: number, x1: number, z1: number, h: number
     } else {
       const k = K(x, 0, z);
       if (!voxels.has(k) && !m.has(k)) m.set(k, { k, a: null, b: { t: floor, r: 0 } });
+      // each upper storey gets a floor: a slab in the top row of the storey below
+      for (let y = 2; y + 1 < h && y < H; y += 3) { const s = K(x, y, z); if (!voxels.has(s) && !m.has(s)) m.set(s, { k: s, a: null, b: { t: 'floorSlab', r: 0 } }); }
     }
   }
   return [...m.values()];

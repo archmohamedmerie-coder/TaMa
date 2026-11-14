@@ -83,7 +83,7 @@ function splitPaint(t: string) {
   };
   return { paint: make(A), keep: B.p.length ? make(B) : null };
 }
-function fill(key: string, geo: THREE.BufferGeometry, t: string, list: number[], painted: boolean, mat?: THREE.Material) {
+function fill(key: string, geo: THREE.BufferGeometry, t: string, list: number[], painted: boolean, mat?: THREE.Material, floor?: boolean) {
   let m = MESH[key];
   if (!m || m.userData.cap < list.length) {
     if (m) { world.remove(m); m.dispose(); }
@@ -94,7 +94,8 @@ function fill(key: string, geo: THREE.BufferGeometry, t: string, list: number[],
   }
   list.forEach((k, i) => {
     const c = unK(k), v = voxels.get(k)!;
-    dummy.position.set(c[0] + .5, c[1] + .5, c[2] + .5); dummy.rotation.set(0, (v.r || 0) * Math.PI / 4, 0); dummy.updateMatrix();
+    dummy.position.set(c[0] + .5, c[1] + .5, c[2] + .5); // a floor under a piece keeps its own direction and is never hidden with the piece
+    dummy.rotation.set(0, floor ? 0 : (v.r || 0) * Math.PI / 4, 0); dummy.scale.setScalar(!floor && view.hidden.has(k) ? 0 : 1); dummy.updateMatrix();
     m.setMatrixAt(i, dummy.matrix);
     const j = isBlock(t) ? .95 + ((c[0] * 7 + c[1] * 13 + c[2] * 29) % 10) / 100 : 1;
     m.setColorAt(i, painted ? tint.setHex(v.c!).multiplyScalar(j) : tint.setRGB(j, j, j));
@@ -107,8 +108,12 @@ export function applyRoofs() {
   for (const key in MESH) MESH[key].visible = !(view.hideRoofs && !!TYPES[key.split('#')[0]].roof);
 }
 function rebuildBase(t: string) {
-  const plain: number[] = [], painted: number[] = [];
-  voxels.forEach((v, k) => { if (v.t === t && v.of == null) (v.c == null ? plain : painted).push(k); });
+  const plain: number[] = [], painted: number[] = [], under: number[] = [];
+  voxels.forEach((v, k) => {
+    if (v.t === t && v.of == null) (v.c == null ? plain : painted).push(k);
+    else if (v.f === t) under.push(k);       // a floor lying under another piece
+  });
+  if (under.length || MESH[t + '#u']) fill(t + '#u', GEO[t], t, under, false, undefined, true);
   fill(t, GEO[t], t, plain, false);
   if (painted.length || MESH[t + '#p']) {
     const s = SPLIT[t] || (SPLIT[t] = splitPaint(t));
@@ -228,4 +233,14 @@ export function updateDoors(dt: number, hx: number, hy: number, hz: number) {
       m.setMatrixAt(d.idx, mA); m.instanceMatrix.needsUpdate = true;
     });
   }
+}
+
+/* ---------- faint boxes in place of walls faded for the view inside ---------- */
+const GHOSTS = 600;
+const wallGhost = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 1, 1), new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: .16, depthWrite: false }), GHOSTS);
+wallGhost.count = 0; wallGhost.frustumCulled = false; world.add(wallGhost);
+export function setGhostCells(keys: number[]) {
+  const n = Math.min(GHOSTS, keys.length);
+  for (let i = 0; i < n; i++) { const c = unK(keys[i]); dummy.position.set(c[0] + .5, c[1] + .5, c[2] + .5); dummy.rotation.set(0, 0, 0); dummy.scale.setScalar(1); dummy.updateMatrix(); wallGhost.setMatrixAt(i, dummy.matrix); }
+  wallGhost.count = n; wallGhost.instanceMatrix.needsUpdate = true;
 }

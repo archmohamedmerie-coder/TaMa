@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { TYPES, isBlock } from './types';
-import { N, H, K, unK, inB, voxels, commit, cellsOf, sizeOf, type Placement, swapOp, pieceKeys, anchorKey, turnStep, roomOp, roofOp, type RoofShape } from './world';
+import { N, H, K, unK, inB, voxels, commit, cellsOf, offCell, sizeOf, type Placement, swapOp, pieceKeys, anchorKey, turnStep, roomOp, roofOp, type RoofShape } from './world';
 import { canvas, camera, ghost, setRoomPreview } from './render';
 import { pick, targetFor, planePoint, type Hit } from './pick';
 import { sfx } from './audio';
@@ -97,7 +97,13 @@ export function tap(px: number, py: number) {
   // a block built against the same kind of block continues its direction (a row of roof pieces)
   let r = !hit.ground && hit.v.t === selected ? hit.v.r : 0;
   if (turnStep(selected) === 2) r &= 6;
-  const op = swapOp(old ? pieceKeys(k) : [], { x: tg.cell[0], y: tg.cell[1], z: tg.cell[2], t: selected, r });
+  // a staircase makes its own opening in the floor slab above
+  const gone = old ? pieceKeys(k) : [];
+  for (const o of TYPES[selected].clears || []) {
+    const c = offCell(tg.cell[0], tg.cell[1], tg.cell[2], o, r), q = K(c[0], c[1], c[2]);
+    if (inB(c[0], c[1], c[2]) && voxels.get(q)?.t === 'floorSlab' && !gone.includes(q)) gone.push(q);
+  }
+  const op = swapOp(gone, { x: tg.cell[0], y: tg.cell[1], z: tg.cell[2], t: selected, r });
   if (!op) { sfx.no(); say('لا يوجد مكان كافٍ هنا. جرّبي مكانًا أوسع.'); return; }
   commit(op); selected === 'fountain' || selected === 'water' ? sfx.splash() : sfx.place(selected);
 }

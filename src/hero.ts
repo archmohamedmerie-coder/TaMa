@@ -37,7 +37,7 @@ const v3 = new THREE.Vector3();
 
 /* ---------- where she can stand ---------- */
 // flat pieces and flowers can be walked over, and doors can be walked through
-const passable = (v: Voxel | undefined) => !v || !!TYPES[v.t].flat || TYPES[v.t].cat === 'flower' || !!TYPES[v.t].door;
+const passable = (v: Voxel | undefined) => !v || !!TYPES[v.t].flat || TYPES[v.t].cat === 'flower' || !!TYPES[v.t].door || !!TYPES[v.t].thin;
 const free = (x: number, y: number, z: number) => inB(x, y, z) && passable(voxels.get(K(x, y, z)));
 const floorAt = (x: number, y: number, z: number) => { if (y === 0) return true; const u = voxels.get(K(x, y - 1, z)); return !!u && isBlock(u.t); };
 const corners = (x: number, z: number) => [[x - R, z - R], [x + R, z - R], [x - R, z + R], [x + R, z + R]].map(c => [Math.floor(c[0]), Math.floor(c[1])]);

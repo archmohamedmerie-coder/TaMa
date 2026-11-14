@@ -7,7 +7,8 @@ let saveTimer: number | undefined;
 export function saveNow() {
   try {
     const list: Entry[] = []; voxels.forEach((v, k) => { if (v.of != null) return; const c = unK(k); const e: Entry = [c[0], c[1], c[2], v.t, v.r || 0]; if (v.c != null) e.push(v.c); list.push(e); });
-    localStorage.setItem(SAVE_KEY, JSON.stringify({ v: 3, voxels: list, state }));
+    const floors: [number, number, number, string][] = []; voxels.forEach((v, k) => { if (v.f) { const c = unK(k); floors.push([c[0], c[1], c[2], v.f]); } });
+    localStorage.setItem(SAVE_KEY, JSON.stringify({ v: 3, voxels: list, floors, state }));
   } catch (e) { /* storage unavailable */ }
 }
 export function save() { clearTimeout(saveTimer); saveTimer = window.setTimeout(saveNow, 400); }
@@ -24,7 +25,7 @@ export function restore(): boolean {
         list = list.map(e => [e[0] + OFF, e[1], e[2] + OFF, e[3], e[4] || 0, e[5]] as Entry);
         if (Array.isArray(state.hero)) state.hero = [state.hero[0] + OFF, state.hero[1], state.hero[2] + OFF];
       }
-      loadWorld(list);
+      loadWorld(list, Array.isArray(d.floors) ? d.floors : undefined);
       return true;
     }
   } catch (e) { /* corrupt save */ }
