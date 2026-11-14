@@ -81,7 +81,7 @@ export function buildPalette() {
 function setMode(m: Mode) {
   // the view through her eyes belongs to walking; any other tool returns to the garden view
   if (m !== 'walk' && view.fp) { setFP(false); $('fpBtn').classList.remove('on'); }
-  tool.mode = m; $('tBuild').classList.toggle('on', m === 'build'); $('tErase').classList.toggle('on', m === 'erase'); $('tPaint').classList.toggle('on', m === 'paint'); $('tTurn').classList.toggle('on', m === 'turn'); $('tWalk').classList.toggle('on', m === 'walk'); $('tRoom').classList.toggle('on', m === 'room'); $('tRoof').classList.toggle('on', m === 'roof'); setRoomPreview(null); ghost.visible = false; buildPalette(); }
+  tool.mode = m; $('tBuild').classList.toggle('on', m === 'build'); $('tErase').classList.toggle('on', m === 'erase'); $('tPaint').classList.toggle('on', m === 'paint'); $('tTurn').classList.toggle('on', m === 'turn'); $('tMove').classList.toggle('on', m === 'move'); $('tWalk').classList.toggle('on', m === 'walk'); $('tRoom').classList.toggle('on', m === 'room'); $('tRoof').classList.toggle('on', m === 'roof'); setRoomPreview(null); ghost.visible = false; ghost.scale.set(1, 1, 1); buildPalette(); }
 export function syncUndo() { ($('tUndo') as HTMLButtonElement).disabled = !undoStack.length; ($('tRedo') as HTMLButtonElement).disabled = !redoStack.length; }
 export function undo() { if (undoOp()) sfx.turn(); }
 export function redo() { if (redoOp()) sfx.turn(); }
@@ -106,6 +106,7 @@ export function initUI() {
   $('tErase').onclick = () => { setMode('erase'); say('اضغطي على أي قطعة لإزالتها.', 3000); };
   $('tPaint').onclick = () => { setMode('paint'); say('اختاري لونًا ثم اضغطي على أي قطعة.', 3000); };
   $('tTurn').onclick = () => { setMode('turn'); say('اضغطي على أي قطعة لتدويرها.', 3000); };
+  $('tMove').onclick = () => { setMode('move'); say('ضعي إصبعكِ على القطعة واسحبيها إلى مكانها الجديد.', 4000); };
   $('tWalk').onclick = () => { setMode('walk'); say('ضعي إصبعكِ على الشاشة لتمشي صديقتكِ نحوه.', 4000); };
   $('tRoom').onclick = () => { setMode('room'); say('اسحبي إصبعكِ على الأرض لترسمي غرفة.', 4000); };
   $('tRoof').onclick = () => { setMode('roof'); say('اختاري شكل السقف ثم اضغطي على البيت.', 4000); };

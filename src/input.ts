@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { TYPES, isBlock } from './types';
-import { N, H, K, unK, inB, voxels, commit, cellsOf, offCell, sizeOf, type Placement, swapOp, pieceKeys, anchorKey, turnStep, roomOp, roofOp, view, type RoofShape } from './world';
+import { N, H, K, unK, inB, voxels, commit, cellsOf, offCell, sizeOf, type Placement, type Op, type Cell, swapOp, pieceKeys, anchorKey, turnStep, roomOp, roofOp, view, type RoofShape } from './world';
 import { canvas, camera, ghost, setRoomPreview, resize } from './render';
 import { pick, targetFor, planePoint, type Hit } from './pick';
 import { sfx } from './audio';
@@ -8,7 +8,7 @@ import { say, undo, redo } from './ui';
 import { setFinger, clearFinger, heroEye, lookBy, walkToScreen } from './hero';
 
 // current tool, shared with the palette in ui.ts
-export type Mode = 'build' | 'erase' | 'paint' | 'turn' | 'walk' | 'room' | 'roof';
+export type Mode = 'build' | 'erase' | 'paint' | 'turn' | 'move' | 'walk' | 'room' | 'roof';
 // one storey is three cells high: room for a two-cell door under a lintel
 export const STOREY = 3;
 // color: the paint colour, or null to give a piece its own colours back
@@ -46,10 +46,64 @@ function turnPiece(ak: number) {
   if (!op) { sfx.no(); say('لا يوجد مكان كافٍ للتدوير هنا.'); return; }
   commit(op); sfx.turn();
 }
+/* ---------- moving a piece: press it, drag, and let go where it should stand ---------- */
+// Where the piece anchored at ak would land for a finger at this screen point.
+// cells: the cells it would cover there (for the preview). op: the step that moves it, or null when it does not fit.
+function moveTarget(px: number, py: number, ak: number): { cells: Cell[]; op: Op | null; same: boolean } | null {
+  const v = voxels.get(ak); if (!v) return null;
+  const T = TYPES[v.t], a = unK(ak), own = pieceKeys(ak);
+  // look through the piece itself, to what lies behind and under it
+  const had = view.hidden.has(ak); view.hidden.add(ak);
+  const hit = pick(px, py);
+  if (!had) view.hidden.delete(ak);
+  if (!hit) return null;
+  if (T.opening && !hit.ground && isBlock(hit.v.t)) {
+    // a window or door moves along the walls: it opens the new spot and the old one is walled up again
+    const o = openingPlacement(hit, v.t);
+    if (!o) return { cells: [hit.cell as Cell], op: null, same: false };
+    const p = o.place, cells = cellsOf(p.x, p.y, p.z, p.t, p.r);
+    const same = p.x === a[0] && p.y === a[1] && p.z === a[2] && p.r === v.r;
+    const op = swapOp([...new Set([...own, ...o.keys])], p);
+    if (op) {
+      const fill = Object.keys(TYPES).find(t => TYPES[t].cat === 'cube' && TYPES[t].color === v.c);
+      for (const e of op) if (!e.b && own.includes(e.k)) e.b = fill ? { t: fill, r: 0 } : { t: 'white', r: 0, c: v.c };
+    }
+    return { cells, op, same };
+  }
+  const tg = targetFor(hit, v.t);
+  if (!tg || 'err' in tg) return { cells: [hit.cell as Cell], op: null, same: false };
+  let [x, y, z] = tg.cell, ok = true;
+  if (T.hang) {
+    // a ceiling light climbs to just under the first block above
+    ok = false;
+    for (; y < H - 1; y++) { const up = voxels.get(K(x, y + 1, z)); if (up && isBlock(up.t)) { ok = true; break; } }
+    if (!ok) y = tg.cell[1];
+  }
+  const cells = cellsOf(x, y, z, v.t, v.r).filter(c => inB(c[0], c[1], c[2]));
+  const same = x === a[0] && y === a[1] && z === a[2];
+  return { cells, op: ok ? swapOp(own, { x, y, z, t: v.t, r: v.r, c: v.c }) : null, same };
+}
+// the preview box, stretched over the cells the piece would cover: green where it fits, red where it does not
+function showMove(m: { cells: Cell[]; op: Op | null } | null) {
+  if (!m || !m.cells.length) { ghost.visible = false; return; }
+  const lo = [1e9, 1e9, 1e9], hi = [-1e9, -1e9, -1e9];
+  for (const c of m.cells) for (let i = 0; i < 3; i++) { lo[i] = Math.min(lo[i], c[i]); hi[i] = Math.max(hi[i], c[i] + 1); }
+  ghost.position.set((lo[0] + hi[0]) / 2, (lo[1] + hi[1]) / 2, (lo[2] + hi[2]) / 2);
+  ghost.scale.set(hi[0] - lo[0], hi[1] - lo[1], hi[2] - lo[2]);
+  ghost.material.color.set(m.op ? 0x6fe08a : 0xff4d6d); ghost.visible = true;
+}
+function endMove(ak: number, px: number, py: number, drop: boolean) {
+  ghost.visible = false; ghost.scale.set(1, 1, 1);
+  if (!drop) return;
+  const m = moveTarget(px, py, ak), v = voxels.get(ak);
+  if (!m || !v || m.same) return;
+  if (!m.op) { sfx.no(); say('لا يوجد مكان كافٍ هنا. جرّبي مكانًا آخر.', 3000); return; }
+  commit(m.op); sfx.place(v.t);
+}
 export function tap(px: number, py: number) {
   const hit = pick(px, py);
   if (!hit) return;
-  if (tool.mode === 'walk' || tool.mode === 'room') return;
+  if (tool.mode === 'walk' || tool.mode === 'room' || tool.mode === 'move') return;
   if (tool.mode === 'roof') {
     const op = hit.ground ? null : roofOp(hit.cell[0], hit.cell[1], hit.cell[2], tool.roof.shape, tool.roof.color == null ? undefined : tool.roof.color);
     if (!op) { sfx.no(); say(hit.ground ? 'اضغطي على جدار البيت لأضع له سقفًا.' : tool.roof.shape === 'none' ? 'لا يوجد سقف هنا.' : 'لا يوجد مكان لسقف فوق هذا الجدار.'); return; }
@@ -152,15 +206,16 @@ type Gest =
   | { type: 'walk' }
   | { type: 'look'; moved: boolean }
   | { type: 'room'; x0: number; z0: number; x1: number; z1: number }
+  | { type: 'move'; k: number; moved: boolean }
   | { type: 'done' };
 const ptrs = new Map<number, Ptr>(); let gest: Gest | null = null;
 
 function hover(px: number, py: number) {
-  const hit = pick(px, py); ghost.visible = false;
+  const hit = pick(px, py); ghost.visible = false; ghost.scale.set(1, 1, 1);
   if (!hit || tool.mode === 'walk' || tool.mode === 'room') return;
   let c: number[] | null = null;
   if (tool.mode === 'erase') { if (!hit.ground) c = hit.cell; ghost.material.color.set(0xff4d6d); }
-  else if (tool.mode === 'paint' || tool.mode === 'turn' || tool.mode === 'roof') { if (!hit.ground) c = hit.cell; ghost.material.color.set(0xffffff); }
+  else if (tool.mode === 'paint' || tool.mode === 'turn' || tool.mode === 'move' || tool.mode === 'roof') { if (!hit.ground) c = hit.cell; ghost.material.color.set(0xffffff); }
   else if (TYPES[tool.selected].opening && !hit.ground && isBlock(hit.v.t)) { c = hit.cell; ghost.material.color.set(0xffffff); }
   else { const tg = targetFor(hit, tool.selected); if (tg && 'cell' in tg) c = tg.cell; ghost.material.color.set(0xffffff); }
   if (c) { ghost.position.set(c[0] + .5, c[1] + .5, c[2] + .5); ghost.visible = true; }
@@ -200,9 +255,14 @@ export function initInput() {
         const c = groundCell(e.clientX, e.clientY, false);
         if (c) { gest = { type: 'room', x0: c[0], z0: c[1], x1: c[0], z1: c[1] }; setRoomPreview(sorted(gest)); } else gest = { type: 'done' };
       }
+      else if (tool.mode === 'move' && e.button !== 2 && !e.shiftKey) {
+        // with the move tool, a finger on a piece picks it up; on empty ground it turns the view as usual
+        const hit = pick(e.clientX, e.clientY);
+        gest = hit && !hit.ground ? { type: 'move', k: hit.k, moved: false } : { type: 'tap', moved: false, pan: false };
+      }
       else gest = { type: 'tap', moved: false, pan: e.button === 2 || e.shiftKey };
     }
-    else if (ptrs.size === 2) { const a = [...ptrs.values()]; gest = { type: 'pinch', d0: Math.hypot(a[0].x - a[1].x, a[0].y - a[1].y) || 1, dist0: cam.dist, mx: (a[0].x + a[1].x) / 2, my: (a[0].y + a[1].y) / 2, a: Math.atan2(a[1].y - a[0].y, a[1].x - a[0].x) }; clearFinger(); setRoomPreview(null); }
+    else if (ptrs.size === 2) { const a = [...ptrs.values()]; if (gest && gest.type === 'move') endMove(gest.k, 0, 0, false); gest = { type: 'pinch', d0: Math.hypot(a[0].x - a[1].x, a[0].y - a[1].y) || 1, dist0: cam.dist, mx: (a[0].x + a[1].x) / 2, my: (a[0].y + a[1].y) / 2, a: Math.atan2(a[1].y - a[0].y, a[1].x - a[0].x) }; clearFinger(); setRoomPreview(null); }
     ghost.visible = false;
   });
   canvas.addEventListener('pointermove', e => {
@@ -213,6 +273,12 @@ export function initInput() {
     if (gest.type === 'walk') { if (ptrs.size === 1) setFinger(p.x, p.y); return; }
     if (gest.type === 'look') {
       if (ptrs.size === 1) { if (!gest.moved && Math.hypot(p.x - p.sx, p.y - p.sy) > 9) gest.moved = true; if (gest.moved) lookBy(dx, dy); }
+      return;
+    }
+    if (gest.type === 'move') {
+      if (ptrs.size !== 1) return;
+      if (!gest.moved && Math.hypot(p.x - p.sx, p.y - p.sy) > 9) gest.moved = true;
+      if (gest.moved) showMove(moveTarget(p.x, p.y, gest.k));
       return;
     }
     if (gest.type === 'room') {
@@ -236,6 +302,7 @@ export function initInput() {
     if (gest && gest.type === 'walk') clearFinger();
     if (gest && gest.type === 'look' && !gest.moved && e.type === 'pointerup' && ptrs.size === 1 && performance.now() - p.t < 700) walkToScreen(e.clientX, e.clientY);
     if (gest && gest.type === 'room') { if (e.type === 'pointerup') buildRoom(gest); setRoomPreview(null); }
+    if (gest && gest.type === 'move') endMove(gest.k, e.clientX, e.clientY, gest.moved && e.type === 'pointerup' && ptrs.size === 1);
     const wasTap = gest && gest.type === 'tap' && !gest.moved && ptrs.size === 1 && performance.now() - p.t < 700 && e.type === 'pointerup';
     ptrs.delete(e.pointerId);
     if (ptrs.size === 0) gest = null; else if (gest) gest = { type: 'done' };
