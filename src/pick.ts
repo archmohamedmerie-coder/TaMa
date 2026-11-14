@@ -1,11 +1,12 @@
 import * as THREE from 'three';
 import { TYPES, isBlock } from './types';
-import { N, H, K, inB, voxels, view, type Voxel } from './world';
+import { N, H, K, unK, inB, voxels, view, anchorKey, type Voxel } from './world';
 import { canvas, camera } from './render';
 
 export type Hit =
   | { ground: true; cell: number[] }
-  | { ground?: false; cell: number[]; v: Voxel; normal: number[] | null };
+  // cell: the cell under the pointer. k and v: the anchor key and voxel of the piece it belongs to.
+  | { ground?: false; cell: number[]; k: number; v: Voxel; normal: number[] | null };
 export type Target =
   | { cell: number[]; act: 'place' | 'turn' | 'replace' }
   | { err: 'high' | 'edge' | 'support' };
@@ -33,7 +34,7 @@ export function pick(px: number, py: number): Hit | null {
   for (let n = 0; n < 200; n++) {
     const k = K(cell[0], cell[1], cell[2]), v = voxels.get(k);
     // hidden roofs let the tap through to the rooms below
-    if (v && !(view.hideRoofs && TYPES[v.t].roof)) { const nrm = [0, 0, 0]; if (axis >= 0) nrm[axis] = -step[axis]; return { cell: cell.slice(), v, normal: axis >= 0 ? nrm : null }; }
+    if (v && !(view.hideRoofs && TYPES[v.t].roof)) { const nrm = [0, 0, 0]; if (axis >= 0) nrm[axis] = -step[axis]; const ak = anchorKey(k); return { cell: cell.slice(), k: ak, v: voxels.get(ak) || v, normal: axis >= 0 ? nrm : null }; }
     axis = tMax[0] < tMax[1] ? (tMax[0] < tMax[2] ? 0 : 2) : (tMax[1] < tMax[2] ? 1 : 2);
     const prev = cell.slice();
     cell[axis] += step[axis]; tMax[axis] += tDelta[axis];
@@ -45,7 +46,7 @@ export function pick(px: number, py: number): Hit | null {
 export function targetFor(hit: Hit | null, sel: string): Target | null {
   if (!hit) return null;
   if (hit.ground) return { cell: hit.cell, act: 'place' };
-  if (!isBlock(hit.v.t)) return { cell: hit.cell, act: hit.v.t === sel ? 'turn' : 'replace' };
+  if (!isBlock(hit.v.t)) return { cell: unK(hit.k), act: hit.v.t === sel ? 'turn' : 'replace' };
   if (!hit.normal) return null;
   const c = [hit.cell[0] + hit.normal[0], hit.cell[1] + hit.normal[1], hit.cell[2] + hit.normal[2]];
   if (c[1] >= H) return { err: 'high' };

@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 
-export type Cat = 'cube' | 'flower' | 'decor' | 'house' | 'furniture' | 'animal';
+export type Cat = 'cube' | 'flower' | 'decor' | 'house' | 'furniture' | 'animal' | 'street';
 export interface PieceType {
   name: string;
   cat: Cat;
@@ -8,6 +8,7 @@ export interface PieceType {
   stars?: number;
   flat?: boolean;
   glow?: boolean;
+  size?: [number, number, number]; // cells along its own x, y and z when larger than one cell
   roof?: boolean; // hidden while the player looks inside the houses
   solid?: boolean; // fills its cell like a cube: other pieces can be built on and beside it
   keep?: number[]; // part colours that paint does not cover
@@ -136,6 +137,12 @@ export const TYPES: Record<string, PieceType> = {
   counter: { name: 'خزانة مطبخ', cat: 'furniture', keep: [0xc98a4b, 0x8c8c99], geo: () => M([b(.92, .7, .84, WALL, 0, 0, -.04), b(.96, .06, .88, 0xc98a4b, 0, .7, -.04),
     b(.2, .04, .03, 0x8c8c99, .22, .5, .39), b(.2, .04, .03, 0x8c8c99, -.22, .5, .39)]) },
 
+  /* ---------- street (two cells long, front towards +z) ---------- */
+  car: { name: 'سيارة', cat: 'street', size: [1, 1, 2], keep: [DARK, GLASS, 0xffe38a, 0xb81d35, 0x8c8c99], geo: () => M([b(.8, .3, 1.7, 0xe5383b, 0, .14, .5), b(.72, .28, .8, GLASS, 0, .44, .4), b(.74, .05, .84, 0xe5383b, 0, .72, .4),
+    b(.14, .3, .3, DARK, .37, 0, 0), b(.14, .3, .3, DARK, -.37, 0, 0), b(.14, .3, .3, DARK, .37, 0, 1), b(.14, .3, .3, DARK, -.37, 0, 1),
+    b(.16, .08, .03, 0xffe38a, .26, .28, 1.36), b(.16, .08, .03, 0xffe38a, -.26, .28, 1.36), b(.16, .08, .03, 0xb81d35, .26, .28, -.36), b(.16, .08, .03, 0xb81d35, -.26, .28, -.36),
+    b(.5, .06, .04, 0x8c8c99, 0, .14, 1.36), b(.5, .06, .04, 0x8c8c99, 0, .14, -.36)]) },
+
   /* ---------- animals (all face +z) ---------- */
   cow: { name: 'بقرة', cat: 'animal', geo: () => M([b(.5, .38, .8, 0xffffff, 0, .28, -.05),
     b(.02, .18, .25, DARK, .255, .4, -.1), b(.02, .14, .2, DARK, -.255, .42, .05), b(.25, .02, .25, DARK, .05, .66, -.2),
@@ -163,7 +170,7 @@ export const TYPES: Record<string, PieceType> = {
     b(.24, .2, .2, 0xff9d3c, 0, .28, .2), b(.07, .08, .05, 0xff9d3c, .08, .48, .2), b(.07, .08, .05, 0xff9d3c, -.08, .48, .2),
     b(.04, .05, .02, 0x3f9b4b, .06, .38, .3), b(.04, .05, .02, 0x3f9b4b, -.06, .38, .3), b(.04, .03, .02, 0xf06a9b, 0, .34, .3), b(.06, .3, .06, 0xff9d3c, 0, .2, -.3)]) },
 };
-export const CATS: [Cat, string][] = [['flower', 'زهور'], ['cube', 'مكعبات'], ['house', 'بيت'], ['furniture', 'أثاث'], ['decor', 'زينة'], ['animal', 'حيوانات']];
+export const CATS: [Cat, string][] = [['flower', 'زهور'], ['cube', 'مكعبات'], ['house', 'بيت'], ['furniture', 'أثاث'], ['decor', 'حديقة'], ['animal', 'مزرعة'], ['street', 'شارع']];
 for (const t in TYPES) if (TYPES[t].cat === 'flower') TYPES[t].keep = [STEM, LEAF, 0x6b4423];
 TYPES.tree.keep = TYPES.blossom.keep = [0x8a5a33];
 TYPES.fountain.keep = [0x55bdf2, 0x9adbfa];

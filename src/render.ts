@@ -15,8 +15,8 @@ export const camera = new THREE.PerspectiveCamera(42, 1, .5, 400);
 const hemi = new THREE.HemisphereLight(0xe6f6ff, 0x8fb86a, 1.7); scene.add(hemi);
 const sun = new THREE.DirectionalLight(0xfff1d0, 2.6);
 sun.position.set(14, 26, 12); sun.castShadow = true;
-sun.shadow.mapSize.set(1024, 1024);
-Object.assign(sun.shadow.camera, { left: -17, right: 17, top: 17, bottom: -17, near: 1, far: 70 });
+sun.shadow.mapSize.set(2048, 2048);
+Object.assign(sun.shadow.camera, { left: -25, right: 25, top: 25, bottom: -25, near: 1, far: 90 });
 sun.shadow.bias = -0.0006; sun.shadow.normalBias = .03;
 scene.add(sun);
 
@@ -107,7 +107,7 @@ export function applyRoofs() {
 }
 export function rebuild(t: string) {
   const plain: number[] = [], painted: number[] = [];
-  voxels.forEach((v, k) => { if (v.t === t) (v.c == null ? plain : painted).push(k); });
+  voxels.forEach((v, k) => { if (v.t === t && v.of == null) (v.c == null ? plain : painted).push(k); });
   fill(t, GEO[t], t, plain, false);
   if (painted.length || MESH[t + '#p']) {
     const s = SPLIT[t] || (SPLIT[t] = splitPaint(t));

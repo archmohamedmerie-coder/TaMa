@@ -9,7 +9,7 @@ interface Stats { kinds: number; flowers: number; bench: number }
 interface Goal { text: string; max: number; val: (s: Stats) => number; hint: string; tab: Cat }
 export const GOALS: Goal[] = [
   { text: 'ازرعي 4 أنواع مختلفة من الزهور', max: 4, val: s => s.kinds, hint: 'افتحي قائمة الزهور في الأسفل. اختاري زهرة ثم اضغطي على العشب، وبعدها جرّبي نوعًا آخر.', tab: 'flower' },
-  { text: 'ضعي مقعدًا للراحة', max: 1, val: s => s.bench, hint: 'المقعد موجود في قائمة الزينة. اضغطي عليه مرة ثانية لتدويره.', tab: 'decor' },
+  { text: 'ضعي مقعدًا للراحة', max: 1, val: s => s.bench, hint: 'المقعد موجود في قائمة الحديقة. اضغطي عليه مرة ثانية لتدويره.', tab: 'decor' },
   { text: 'ازرعي 12 زهرة أو أكثر', max: 12, val: s => s.flowers, hint: 'عدّي زهوركِ! أضيفي زهورًا حتى يصبح العدد 12.', tab: 'flower' }
 ];
 export const STAR_PATH = '<svg viewBox="0 0 24 24"><path d="M12 2l3 6.6 7 .8-5.2 4.8 1.5 7L12 17.6 5.7 21.2l1.5-7L2 9.4l7-.8z"/></svg>';

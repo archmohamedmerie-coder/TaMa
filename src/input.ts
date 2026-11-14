@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { isBlock } from './types';
-import { N, H, K, voxels, commit, type Op } from './world';
+import { N, H, K, unK, voxels, commit, swapOp, pieceKeys, anchorKey, turnStep } from './world';
 import { canvas, camera, ghost } from './render';
 import { pick, targetFor } from './pick';
 import { sfx } from './audio';
@@ -12,46 +12,57 @@ export type Mode = 'build' | 'erase' | 'paint' | 'turn' | 'walk';
 // color: the paint colour, or null to give a piece its own colours back
 export const tool: { mode: Mode; selected: string; color: number | null } = { mode: 'build', selected: 'rose', color: 0xe5383b };
 
+function turnPiece(ak: number) {
+  const v = voxels.get(ak)!, a = unK(ak);
+  const op = swapOp(pieceKeys(ak), { x: a[0], y: a[1], z: a[2], t: v.t, r: ((v.r || 0) + turnStep(v.t)) % 8, c: v.c });
+  if (!op) { sfx.no(); say('لا يوجد مكان كافٍ للتدوير هنا.'); return; }
+  commit(op); sfx.turn();
+}
 export function tap(px: number, py: number) {
   const hit = pick(px, py);
   if (!hit) return;
   if (tool.mode === 'walk') return;
   if (tool.mode === 'erase') {
     if (hit.ground) return;
-    const k = K(hit.cell[0], hit.cell[1], hit.cell[2]), op: Op = [{ k, a: hit.v, b: null }];
-    const up = hit.cell[1] + 1 < H ? K(hit.cell[0], hit.cell[1] + 1, hit.cell[2]) : -1, uv = up >= 0 && voxels.get(up);
-    if (uv && !isBlock(uv.t)) op.push({ k: up, a: uv, b: null });
-    commit(op); sfx.remove(); return;
+    const keys = pieceKeys(hit.k);
+    // anything standing on the removed piece goes with it
+    for (const k of keys.slice()) {
+      const c = unK(k); if (c[1] + 1 >= H) continue;
+      const up = K(c[0], c[1] + 1, c[2]), uv = voxels.get(up);
+      if (uv && !isBlock(uv.t)) for (const q of pieceKeys(anchorKey(up))) if (!keys.includes(q)) keys.push(q);
+    }
+    commit(swapOp(keys, null)!); sfx.remove(); return;
   }
   if (tool.mode === 'paint') {
     if (hit.ground) return;
     const c = tool.color == null ? undefined : tool.color;
     if (hit.v.c === c) return;
-    commit([{ k: K(hit.cell[0], hit.cell[1], hit.cell[2]), a: hit.v, b: { t: hit.v.t, r: hit.v.r, c } }]); sfx.turn(); return;
+    const a = unK(hit.k);
+    commit(swapOp(pieceKeys(hit.k), { x: a[0], y: a[1], z: a[2], t: hit.v.t, r: hit.v.r, c })!); sfx.turn(); return;
   }
-  if (tool.mode === 'turn') {
-    if (hit.ground) return;
-    commit([{ k: K(hit.cell[0], hit.cell[1], hit.cell[2]), a: hit.v, b: { t: hit.v.t, r: ((hit.v.r || 0) + 1) % 8, c: hit.v.c } }]); sfx.turn(); return;
-  }
+  if (tool.mode === 'turn') { if (!hit.ground) turnPiece(hit.k); return; }
   const selected = tool.selected;
   const tg = targetFor(hit, selected);
   if (!tg) return;
   if ('err' in tg) {
     sfx.no();
-    say(tg.err === 'high' ? 'وصلتِ إلى أعلى ارتفاع. ابني بجانبه.' : tg.err === 'edge' ? 'هنا نهاية الحديقة. جرّبي مكانًا داخلها.' : 'الزهور والزينة تحتاج أرضًا أو مكعبًا تحتها.');
+    say(tg.err === 'high' ? 'وصلتِ إلى أعلى ارتفاع. ابني بجانبه.' : tg.err === 'edge' ? 'هنا نهاية الأرض. جرّبي مكانًا داخلها.' : 'الزهور والزينة تحتاج أرضًا أو مكعبًا تحتها.');
     return;
   }
   const k = K(tg.cell[0], tg.cell[1], tg.cell[2]), old = voxels.get(k) || null;
-  if (tg.act === 'turn' && old) { commit([{ k, a: old, b: { t: old.t, r: ((old.r || 0) + 1) % 8, c: old.c } }]); sfx.turn(); return; }
+  if (tg.act === 'turn' && old) { turnPiece(k); return; }
   // a block built against the same kind of block continues its direction (a row of roof pieces)
-  const r = !hit.ground && hit.v.t === selected ? hit.v.r : 0;
-  commit([{ k, a: old, b: { t: selected, r } }]); selected === 'fountain' || selected === 'water' ? sfx.splash() : sfx.place(selected);
+  let r = !hit.ground && hit.v.t === selected ? hit.v.r : 0;
+  if (turnStep(selected) === 2) r &= 6;
+  const op = swapOp(old ? pieceKeys(k) : [], { x: tg.cell[0], y: tg.cell[1], z: tg.cell[2], t: selected, r });
+  if (!op) { sfx.no(); say('لا يوجد مكان كافٍ هنا. جرّبي مكانًا أوسع.'); return; }
+  commit(op); selected === 'fountain' || selected === 'water' ? sfx.splash() : sfx.place(selected);
 }
 
 /* ---------- camera & input ---------- */
 export const cam = { theta: -.5, phi: .9, dist: 34, target: new THREE.Vector3(-1.5, 0, 3.5) };
 export function placeCamera() {
-  cam.phi = Math.min(1.42, Math.max(.18, cam.phi)); cam.dist = Math.min(52, Math.max(9, cam.dist));
+  cam.phi = Math.min(1.42, Math.max(.18, cam.phi)); cam.dist = Math.min(72, Math.max(9, cam.dist));
   cam.target.x = Math.min(N / 2, Math.max(-N / 2, cam.target.x)); cam.target.z = Math.min(N / 2, Math.max(-N / 2, cam.target.z));
   const s = Math.sin(cam.phi);
   camera.position.set(cam.target.x + cam.dist * s * Math.sin(cam.theta), cam.target.y + cam.dist * Math.cos(cam.phi), cam.target.z + cam.dist * s * Math.cos(cam.theta));

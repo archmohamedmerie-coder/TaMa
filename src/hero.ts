@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { TYPES, isBlock, b, M } from './types';
-import { N, H, K, inB, voxels, type Voxel } from './world';
+import { N, H, OFF, K, inB, voxels, type Voxel } from './world';
 import { state, save } from './save';
 import { world, baseMat, reduceMotion } from './render';
 import { planePoint } from './pick';
@@ -30,7 +30,7 @@ const legL = leg(.08), legR = leg(-.08), armL = arm(.2), armR = arm(-.2);
 hero.add(body, legL, legR, armL, armR);
 
 // where she is: x and z anywhere on the ground, y the level she stands on
-let px = 9.5, pz = 14.5, py = 0, shownY = 0, facing = 0;
+let px = 9.5 + OFF, pz = 14.5 + OFF, py = 0, shownY = 0, facing = 0;
 // the finger she is walking towards, in screen pixels
 let finger: { x: number; y: number } | null = null;
 const v3 = new THREE.Vector3();

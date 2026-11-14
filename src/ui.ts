@@ -52,6 +52,7 @@ export function buildPalette() {
       (p[1] == null ? ' none"' : '" style="background:' + hex(p[1]) + '"') + '></span><span>' + p[0] + '</span></button>').join('');
     return;
   }
+  document.querySelector('.tab.on')?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
   const n = starTotal();
   $('items').innerHTML = Object.keys(TYPES).filter(t => TYPES[t].cat === tab).map(t => {
     const T = TYPES[t], locked = !!T.stars && n < T.stars;
