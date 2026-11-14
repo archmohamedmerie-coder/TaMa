@@ -69,6 +69,7 @@ export const TYPES: Record<string, PieceType> = {
   pink: { name: 'وردي', cat: 'cube', geo: () => cube(0xf08fb6) },
   purple: { name: 'بنفسجي', cat: 'cube', geo: () => cube(0x9b6fd6) },
   yellow: { name: 'أصفر', cat: 'cube', geo: () => cube(0xffd24a) },
+  brick: { name: 'طوب', cat: 'cube', geo: () => M([b(1, 1, 1, 0xb85c44, 0, 0, 0), b(1.004, .03, 1.004, 0xd9b8a3, 0, .31, 0), b(1.004, .03, 1.004, 0xd9b8a3, 0, .65, 0)]) },
   water: { name: 'ماء', cat: 'cube', geo: () => cube(0x4fb7ee) },
 
   rose: { name: 'وردة', cat: 'flower', geo: () => cluster((x, z, h) => stem(x, z, h).concat([b(.2, .14, .2, 0xe02d43, x, h, z), b(.12, .09, .12, 0xb81d35, x, h + .14, z)])) },
@@ -100,6 +101,7 @@ export const TYPES: Record<string, PieceType> = {
     b(.02, .56, .56, GLASS, o, .22, 0), b(.03, .56, .06, 0xffffff, o * 1.01, .22, 0), b(.03, .06, .56, 0xffffff, o * 1.01, .47, 0)]))) },
   door: { name: 'باب', cat: 'house', solid: true, keep: [0x8a5a33, 0xa9683a, 0xffd24a], geo: () => M([b(1, 1, 1, WALL, 0, 0, 0)].concat(...[1, -1].map(s => [
     b(.5, .86, .03, 0x8a5a33, 0, 0, s * .505), b(.34, .3, .02, 0xa9683a, 0, .46, s * .52), b(.06, .06, .04, 0xffd24a, s * .15, .38, s * .53)]))) },
+  plank: { name: 'أرضية خشب', cat: 'house', flat: true, geo: () => M([b(1, .05, 1, 0xc98a4b, 0, 0, 0), b(1, .055, .02, 0x8a5a33, 0, 0, -.25), b(1, .055, .02, 0x8a5a33, 0, 0, .25)]) },
   roof: { name: 'سقف مائل', cat: 'house', solid: true, roof: true, geo: () => M(STEPS.map(i => b(1, .25, 1 - i * .25, i % 2 ? ROOF2 : ROOF, 0, i * .25, -i * .125))) },
   roofCorner: { name: 'زاوية سقف', cat: 'house', solid: true, roof: true, geo: () => M(STEPS.map(i => b(1 - i * .25, .25, 1 - i * .25, i % 2 ? ROOF2 : ROOF, -i * .125, i * .25, -i * .125))) },
   roofTop: { name: 'قمة سقف', cat: 'house', solid: true, roof: true, geo: () => M(STEPS.map(i => b(1, .25, 1 - i * .25, i % 2 ? ROOF2 : ROOF, 0, i * .25, 0))) },

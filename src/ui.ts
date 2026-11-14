@@ -6,6 +6,7 @@ import { sfx } from './audio';
 import { GEO, baseMat, ghost, applyNight, applyRoofs, reduceMotion } from './render';
 import { STAR_PATH, starTotal, hint } from './mission';
 import { tool, type Mode } from './input';
+import { setRoomPreview } from './render';
 
 export const $ = (id: string) => document.getElementById(id) as HTMLElement;
 
@@ -42,11 +43,18 @@ function makeThumbs() {
 const PAINTS: [string, number | null][] = [['الأصلي', null], ['أحمر', 0xe5383b], ['برتقالي', 0xff8c2e], ['أصفر', 0xffd24a], ['أخضر', 0x4fb35a], ['سماوي', 0x4fb7ee],
   ['أزرق', 0x3a66d6], ['بنفسجي', 0x9b6fd6], ['وردي', 0xf08fb6], ['أبيض', 0xf6f2ea], ['بني', 0x9a6b3f], ['رمادي', 0x8c8c99]];
 const hex = (c: number) => '#' + c.toString(16).padStart(6, '0');
+// wall materials offered by the room tool
+const WALLS = ['white', 'brick', 'wood', 'stone'];
 let tab: Cat = 'flower';
 export function setTab(c: Cat) { tab = c; buildPalette(); }
 export function buildPalette() {
-  const paint = tool.mode === 'paint';
+  const paint = tool.mode === 'paint' || tool.mode === 'room';
   $('tabs').innerHTML = CATS.map(c => '<button class="tab' + (c[0] === tab && !paint ? ' on' : '') + '" data-cat="' + c[0] + '">' + c[1] + '</button>').join('');
+  if (tool.mode === 'room') {
+    $('items').innerHTML = WALLS.map(t => '<button class="item' + (t === tool.room.wall ? ' on' : '') + '" data-wall="' + t + '"><img alt="" src="' + THUMB[t] + '"><span>' + TYPES[t].name + '</span></button>').join('') +
+      [[1, 'طابق'], [2, 'طابقان']].map(o => '<button class="item swatch' + (o[0] === tool.room.storeys ? ' on' : '') + '" data-storeys="' + o[0] + '"><span class="dot num">' + o[0] + '</span><span>' + o[1] + '</span></button>').join('');
+    return;
+  }
   if (paint) {
     $('items').innerHTML = PAINTS.map(p => '<button class="item swatch' + (p[1] === tool.color ? ' on' : '') + '" data-c="' + (p[1] == null ? '' : p[1]) + '"><span class="dot' +
       (p[1] == null ? ' none"' : '" style="background:' + hex(p[1]) + '"') + '></span><span>' + p[0] + '</span></button>').join('');
@@ -60,7 +68,7 @@ export function buildPalette() {
   }).join('');
 }
 
-function setMode(m: Mode) { tool.mode = m; $('tBuild').classList.toggle('on', m === 'build'); $('tErase').classList.toggle('on', m === 'erase'); $('tPaint').classList.toggle('on', m === 'paint'); $('tTurn').classList.toggle('on', m === 'turn'); $('tWalk').classList.toggle('on', m === 'walk'); ghost.visible = false; buildPalette(); }
+function setMode(m: Mode) { tool.mode = m; $('tBuild').classList.toggle('on', m === 'build'); $('tErase').classList.toggle('on', m === 'erase'); $('tPaint').classList.toggle('on', m === 'paint'); $('tTurn').classList.toggle('on', m === 'turn'); $('tWalk').classList.toggle('on', m === 'walk'); $('tRoom').classList.toggle('on', m === 'room'); setRoomPreview(null); ghost.visible = false; buildPalette(); }
 export function syncUndo() { ($('tUndo') as HTMLButtonElement).disabled = !undoStack.length; ($('tRedo') as HTMLButtonElement).disabled = !redoStack.length; }
 export function undo() { if (undoOp()) sfx.turn(); }
 export function redo() { if (redoOp()) sfx.turn(); }
@@ -69,9 +77,11 @@ export function initUI() {
   makeThumbs();
   const pal = document.querySelector<HTMLElement>('.palette')!;
   new ResizeObserver(() => document.documentElement.style.setProperty('--pal', pal.offsetHeight + 'px')).observe(pal);
-  $('tabs').addEventListener('click', e => { const el = (e.target as HTMLElement).closest<HTMLElement>('.tab'); if (el) { if (tool.mode === 'paint' || tool.mode === 'walk') tool.mode = 'build'; setTab(el.dataset.cat as Cat); setMode(tool.mode); sfx.tick(); } });
+  $('tabs').addEventListener('click', e => { const el = (e.target as HTMLElement).closest<HTMLElement>('.tab'); if (el) { if (tool.mode === 'paint' || tool.mode === 'walk' || tool.mode === 'room') tool.mode = 'build'; setTab(el.dataset.cat as Cat); setMode(tool.mode); sfx.tick(); } });
   $('items').addEventListener('click', e => {
     const el = (e.target as HTMLElement).closest<HTMLElement>('.item'); if (!el) return;
+    if (el.dataset.wall) { tool.room.wall = el.dataset.wall; buildPalette(); sfx.tick(); return; }
+    if (el.dataset.storeys) { tool.room.storeys = Number(el.dataset.storeys); buildPalette(); sfx.tick(); return; }
     if (el.dataset.c !== undefined) { tool.color = el.dataset.c === '' ? null : Number(el.dataset.c); buildPalette(); sfx.tick(); return; }
     const t = el.dataset.t!, T = TYPES[t];
     if (T.stars && starTotal() < T.stars) { sfx.no(); say(T.stars === 1 ? 'هذه القطعة تُفتح بعد أول نجمة.' : 'هذه القطعة تُفتح عندما تجمعين ' + T.stars + ' نجوم.'); return; }
@@ -82,6 +92,7 @@ export function initUI() {
   $('tPaint').onclick = () => { setMode('paint'); say('اختاري لونًا ثم اضغطي على أي قطعة.', 3000); };
   $('tTurn').onclick = () => { setMode('turn'); say('اضغطي على أي قطعة لتدويرها.', 3000); };
   $('tWalk').onclick = () => { setMode('walk'); say('ضعي إصبعكِ على الشاشة لتمشي صديقتكِ نحوه.', 4000); };
+  $('tRoom').onclick = () => { setMode('room'); say('اسحبي إصبعكِ على الأرض لترسمي غرفة.', 4000); };
   $('tUndo').onclick = undo; $('tRedo').onclick = redo;
   $('makkoBtn').onclick = hint;
   $('missionBtn').onclick = () => { const o = $('mission').classList.toggle('open'); $('missionBtn').setAttribute('aria-expanded', String(o)); };

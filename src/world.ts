@@ -1,4 +1,4 @@
-import { TYPES } from './types';
+import { TYPES, isBlock } from './types';
 
 export const N = 32, H = 10;
 // the starter garden keeps its original 20×20 size, in the middle of the land
@@ -115,4 +115,25 @@ export function replaceWorld(list: Entry[]) {
   voxels.forEach((v, k) => { const b = next.get(k) || null; if (!b || b.t !== v.t || b.r !== v.r || b.c !== v.c || b.of !== v.of) op.push({ k, a: v, b }); });
   next.forEach((b, k) => { if (!voxels.has(k)) op.push({ k, a: null, b }); });
   if (op.length) commit(op);
+}
+// Walls around the rectangle and a floor inside it. Existing blocks are kept, so a room drawn
+// against another shares its wall; flowers and other small pieces in the way of a wall are cleared.
+export function roomOp(x0: number, z0: number, x1: number, z1: number, h: number, wall: string, floor: string): Op {
+  const m = new Map<number, Edit>();
+  const clear = (k: number) => { for (const q of pieceKeys(anchorKey(k))) if (!m.has(q)) m.set(q, { k: q, a: voxels.get(q)!, b: null }); };
+  for (let x = x0; x <= x1; x++) for (let z = z0; z <= z1; z++) {
+    if (x === x0 || x === x1 || z === z0 || z === z1) {
+      for (let y = 0; y < h && y < H; y++) {
+        const k = K(x, y, z), v = voxels.get(k);
+        if (v && isBlock(v.t)) continue;
+        if (v) clear(k);
+        const e = m.get(k), b: Voxel = { t: wall, r: 0 };
+        if (e) e.b = b; else m.set(k, { k, a: null, b });
+      }
+    } else {
+      const k = K(x, 0, z);
+      if (!voxels.has(k) && !m.has(k)) m.set(k, { k, a: null, b: { t: floor, r: 0 } });
+    }
+  }
+  return [...m.values()];
 }

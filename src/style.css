@@ -130,3 +130,7 @@ button:focus-visible{outline:3px solid var(--berry);outline-offset:2px}
 
 /* makko sits just above the palette, whatever its height */
 .makko{bottom:calc(var(--pal,150px) + 22px)}
+
+/* eight tools: always two columns */
+.tools{grid-template-columns:1fr 1fr;gap:8px}
+.swatch .dot.num{display:grid;place-items:center;font-size:30px;font-weight:800;background:#efe9f7;color:var(--plum);direction:ltr}

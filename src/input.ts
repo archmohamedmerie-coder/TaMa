@@ -1,16 +1,20 @@
 import * as THREE from 'three';
 import { isBlock } from './types';
-import { N, H, K, unK, voxels, commit, swapOp, pieceKeys, anchorKey, turnStep } from './world';
-import { canvas, camera, ghost } from './render';
-import { pick, targetFor } from './pick';
+import { N, H, K, unK, voxels, commit, swapOp, pieceKeys, anchorKey, turnStep, roomOp } from './world';
+import { canvas, camera, ghost, setRoomPreview } from './render';
+import { pick, targetFor, planePoint } from './pick';
 import { sfx } from './audio';
 import { say, undo, redo } from './ui';
 import { setFinger, clearFinger } from './hero';
 
 // current tool, shared with the palette in ui.ts
-export type Mode = 'build' | 'erase' | 'paint' | 'turn' | 'walk';
+export type Mode = 'build' | 'erase' | 'paint' | 'turn' | 'walk' | 'room';
+// one storey is three cells high: room for a two-cell door under a lintel
+export const STOREY = 3;
 // color: the paint colour, or null to give a piece its own colours back
-export const tool: { mode: Mode; selected: string; color: number | null } = { mode: 'build', selected: 'rose', color: 0xe5383b };
+// room: the wall material and number of storeys used by the room tool
+export const tool: { mode: Mode; selected: string; color: number | null; room: { wall: string; storeys: number } } =
+  { mode: 'build', selected: 'rose', color: 0xe5383b, room: { wall: 'white', storeys: 1 } };
 
 function turnPiece(ak: number) {
   const v = voxels.get(ak)!, a = unK(ak);
@@ -21,7 +25,7 @@ function turnPiece(ak: number) {
 export function tap(px: number, py: number) {
   const hit = pick(px, py);
   if (!hit) return;
-  if (tool.mode === 'walk') return;
+  if (tool.mode === 'walk' || tool.mode === 'room') return;
   if (tool.mode === 'erase') {
     if (hit.ground) return;
     const keys = pieceKeys(hit.k);
@@ -78,17 +82,36 @@ type Gest =
   | { type: 'tap'; moved: boolean; pan: boolean }
   | { type: 'pinch'; d0: number; dist0: number; mx: number; my: number; a: number }
   | { type: 'walk' }
+  | { type: 'room'; x0: number; z0: number; x1: number; z1: number }
   | { type: 'done' };
 const ptrs = new Map<number, Ptr>(); let gest: Gest | null = null;
 
 function hover(px: number, py: number) {
   const hit = pick(px, py); ghost.visible = false;
-  if (!hit || tool.mode === 'walk') return;
+  if (!hit || tool.mode === 'walk' || tool.mode === 'room') return;
   let c: number[] | null = null;
   if (tool.mode === 'erase') { if (!hit.ground) c = hit.cell; ghost.material.color.set(0xff4d6d); }
   else if (tool.mode === 'paint' || tool.mode === 'turn') { if (!hit.ground) c = hit.cell; ghost.material.color.set(0xffffff); }
   else { const tg = targetFor(hit, tool.selected); if (tg && 'cell' in tg) c = tg.cell; ghost.material.color.set(0xffffff); }
   if (c) { ghost.position.set(c[0] + .5, c[1] + .5, c[2] + .5); ghost.visible = true; }
+}
+
+/* ---------- drawing a room ---------- */
+// the ground cell under a screen point; with clamp, a point beyond the land snaps to its edge
+function groundCell(px: number, py: number, clamp: boolean): [number, number] | null {
+  const p = planePoint(px, py, 0); if (!p) return null;
+  let x = Math.floor(p[0]), z = Math.floor(p[1]);
+  if (clamp) { x = Math.min(N - 1, Math.max(0, x)); z = Math.min(N - 1, Math.max(0, z)); }
+  return x >= 0 && x < N && z >= 0 && z < N ? [x, z] : null;
+}
+type Rect = { x0: number; z0: number; x1: number; z1: number };
+const sorted = (r: Rect) => ({ x0: Math.min(r.x0, r.x1), z0: Math.min(r.z0, r.z1), x1: Math.max(r.x0, r.x1), z1: Math.max(r.z0, r.z1), h: STOREY * tool.room.storeys });
+function buildRoom(g: Rect) {
+  const r = sorted(g);
+  if (r.x1 - r.x0 < 1 || r.z1 - r.z0 < 1) { say('اسحبي إصبعكِ أبعد قليلًا لترسمي غرفة.', 3000); return; }
+  const op = roomOp(r.x0, r.z0, r.x1, r.z1, r.h, tool.room.wall, 'plank');
+  if (!op.length) return;
+  commit(op); sfx.place(tool.room.wall); say('غرفة جديدة!', 2500);
 }
 
 export function initInput() {
@@ -98,9 +121,14 @@ export function initInput() {
     if (ptrs.size === 1) {
       // with the walk tool, a finger on the screen is where she walks to
       if (tool.mode === 'walk' && e.button !== 2 && !e.shiftKey) { gest = { type: 'walk' }; setFinger(e.clientX, e.clientY); }
+      else if (tool.mode === 'room' && e.button !== 2 && !e.shiftKey) {
+        // with the room tool, a drag across the ground draws the room
+        const c = groundCell(e.clientX, e.clientY, false);
+        if (c) { gest = { type: 'room', x0: c[0], z0: c[1], x1: c[0], z1: c[1] }; setRoomPreview(sorted(gest)); } else gest = { type: 'done' };
+      }
       else gest = { type: 'tap', moved: false, pan: e.button === 2 || e.shiftKey };
     }
-    else if (ptrs.size === 2) { const a = [...ptrs.values()]; gest = { type: 'pinch', d0: Math.hypot(a[0].x - a[1].x, a[0].y - a[1].y) || 1, dist0: cam.dist, mx: (a[0].x + a[1].x) / 2, my: (a[0].y + a[1].y) / 2, a: Math.atan2(a[1].y - a[0].y, a[1].x - a[0].x) }; clearFinger(); }
+    else if (ptrs.size === 2) { const a = [...ptrs.values()]; gest = { type: 'pinch', d0: Math.hypot(a[0].x - a[1].x, a[0].y - a[1].y) || 1, dist0: cam.dist, mx: (a[0].x + a[1].x) / 2, my: (a[0].y + a[1].y) / 2, a: Math.atan2(a[1].y - a[0].y, a[1].x - a[0].x) }; clearFinger(); setRoomPreview(null); }
     ghost.visible = false;
   });
   canvas.addEventListener('pointermove', e => {
@@ -109,6 +137,11 @@ export function initInput() {
     const dx = e.clientX - p.x, dy = e.clientY - p.y; p.x = e.clientX; p.y = e.clientY;
     if (!gest) return;
     if (gest.type === 'walk') { if (ptrs.size === 1) setFinger(p.x, p.y); return; }
+    if (gest.type === 'room') {
+      const c = ptrs.size === 1 ? groundCell(p.x, p.y, true) : null;
+      if (c) { gest.x1 = c[0]; gest.z1 = c[1]; setRoomPreview(sorted(gest)); }
+      return;
+    }
     if (gest.type === 'tap' && ptrs.size === 1) {
       if (!gest.moved && Math.hypot(p.x - p.sx, p.y - p.sy) > 9) gest.moved = true;
       if (gest.moved) { if (gest.pan) pan(dx, dy); else { cam.theta -= dx * .0065; cam.phi -= dy * .0055; } }
@@ -123,6 +156,7 @@ export function initInput() {
   function up(e: PointerEvent) {
     const p = ptrs.get(e.pointerId); if (!p) return;
     if (gest && gest.type === 'walk') clearFinger();
+    if (gest && gest.type === 'room') { if (e.type === 'pointerup') buildRoom(gest); setRoomPreview(null); }
     const wasTap = gest && gest.type === 'tap' && !gest.moved && ptrs.size === 1 && performance.now() - p.t < 700 && e.type === 'pointerup';
     ptrs.delete(e.pointerId);
     if (ptrs.size === 0) gest = null; else if (gest) gest = { type: 'done' };

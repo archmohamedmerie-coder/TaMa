@@ -168,3 +168,14 @@ export function resize() {
   const w = canvas.clientWidth, h = canvas.clientHeight;
   renderer.setSize(w, h, false); camera.aspect = w / h; camera.fov = w < h ? 52 : 42; camera.updateProjectionMatrix();
 }
+
+const roomGhost = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: .35, depthWrite: false }));
+roomGhost.visible = false; world.add(roomGhost);
+export function setRoomPreview(r: { x0: number; z0: number; x1: number; z1: number; h: number } | null) {
+  roomGhost.visible = !!r; if (!r) return;
+  const w = r.x1 - r.x0 + 1, d = r.z1 - r.z0 + 1;
+  roomGhost.scale.set(w + .04, r.h, d + .04);
+  roomGhost.position.set(r.x0 + w / 2, r.h / 2, r.z0 + d / 2);
+  // too small to be a room: show it in red
+  roomGhost.material.color.set(w < 2 || d < 2 ? 0xff4d6d : 0xffffff);
+}
