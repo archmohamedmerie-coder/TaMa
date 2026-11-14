@@ -217,7 +217,7 @@ export const TYPES: Record<string, PieceType> = {
   // the floor of an upper storey: it fills the top row of the storey below
   floorSlab: { name: 'أرضية طابق', cat: 'house', solid: true, geo: () => M([b(1, .9, 1, 0xe8dfd0, 0, 0, 0), b(1, .1, 1, 0xc98a4b, 0, .9, 0)]) },
   // three cells long and three high, rising towards +z; it makes its own opening in a floor slab above
-  stairs: { name: 'درج', cat: 'house', solid: true, size: [1, 3, 3], cells: [[0, 0, 0], [0, 0, 1], [0, 1, 1], [0, 0, 2], [0, 1, 2], [0, 2, 2]], clears: [[0, 2, 0], [0, 2, 1], [0, 2, 2]],
+  stairs: { name: 'درج', cat: 'house', solid: true, size: [1, 3, 3], cells: [[0, 0, 0], [0, 0, 1], [0, 1, 1], [0, 0, 2], [0, 1, 2], [0, 2, 2]], clears: [[0, 2, -1], [0, 2, 0], [0, 2, 1], [0, 2, 2]],
     geo: () => M([0, 1, 2, 3, 4, 5].flatMap(i => [b(1, (i + 1) * .5 - .06, .5, 0xb07a45, 0, 0, -.25 + i * .5), b(1, .06, .5, 0xc98a4b, 0, (i + 1) * .5 - .06, -.25 + i * .5)])) },
   roof: { name: 'سقف مائل', cat: 'house', solid: true, roof: true, geo: () => M([slopeGeo()]) },
   roofCorner: { name: 'زاوية سقف', cat: 'house', solid: true, roof: true, geo: () => M([solid(ROOF, [...BASE, [-.5, 1, -.5]], [[0, 1, 2, 3], [0, 3, 4], [0, 1, 4], [4, 3, 2], [4, 2, 1]], [-.2, .15, -.2])]) },
@@ -385,7 +385,7 @@ export function fenceGeo(mask: number): Geo {
     for (const d of [.2, .4]) parts.push(sx ? b(.1, .56, .07, 0xfbf7ef, sx * d, 0, 0) : b(.07, .56, .1, 0xfbf7ef, 0, 0, sz * d));
   };
   if (mask & 1) arm(1, 0); if (mask & 2) arm(-1, 0); if (mask & 4) arm(0, 1); if (mask & 8) arm(0, -1);
-  return M(parts);
+  return stretch(M(parts), 1, 1.25, 1);
 }
 for (const t of ['bunny', 'cow', 'sheep', 'chicken', 'duck', 'horse', 'cat', 'dog']) TYPES[t].alive = true;
 export const CATS: [Cat, string][] = [['flower', 'زهور'], ['cube', 'مكعبات'], ['open', 'فتحات'], ['house', 'بيت'], ['furniture', 'أثاث'], ['bath', 'حمّام'], ['light', 'إنارة'], ['decor', 'حديقة'], ['animal', 'مزرعة'], ['street', 'شارع']];
@@ -395,6 +395,34 @@ TYPES.fountain.keep = [0x55bdf2, 0x9adbfa];
 TYPES.lantern.keep = [0x4a4458];
 // animals keep their faces, beaks, combs and manes
 for (const t in TYPES) if (TYPES[t].cat === 'animal') TYPES[t].keep = [DARK, 0xf06a9b, 0xf7a8c4, 0xf7b6c4, 0xff9a2e, 0xe5383b, 0x3d2a1c, 0x4a4458, 0x3f9b4b, 0xfffffe, 0xe8dcc0];
+/* ---------- human scale ----------
+   A cell is about one metre and the girl stands 1.5 high. Pieces first drawn for a smaller figure
+   are stretched here to fit her: tall things taller, big animals bigger, wall pieces hung at eye level. */
+function stretch(g: Geo, sx: number, sy: number, sz: number, lift = 0): Geo {
+  g.translate(0, .5, 0); g.scale(sx, sy, sz); g.translate(0, -.5 + lift, 0);
+  g.computeBoundingBox(); g.computeBoundingSphere(); return g;
+}
+function fit(t: string, sx: number, sy = sx, sz = sx, lift = 0) {
+  const T = TYPES[t], g0 = T.geo, gl = T.glass;
+  T.geo = () => stretch(g0(), sx, sy, sz, lift);
+  if (gl) T.glass = () => stretch(gl(), sx, sy, sz, lift);
+  if (T.leaves) T.leaves = T.leaves.map(l => { const lg = l.geo; return { ...l, geo: () => stretch(lg(), sx, sy, sz, lift) }; });
+}
+// taller
+for (const [t, sy] of [['wardrobe', 1.35], ['bookshelf', 1.35], ['fridge', 1.18], ['lamp', 1.25], ['tripodLamp', 1.15], ['lantern', 1.15], ['streetLamp', 1.4], ['sign', 1.35],
+  ['railing', 1.3], ['fence', 1.25], ['gate', 1.2], ['bench', 1.3], ['shower', 1.12], ['swing', 1.4], ['slide', 1.35], ['well', 1.2], ['mailbox', 1.2]] as [string, number][]) fit(t, 1, sy, 1);
+// bigger all round
+for (const [t, s] of [['cow', 1.3], ['horse', 1.3], ['sheep', 1.15], ['chicken', .8], ['bunny', .8], ['bike', 1.2], ['plant', 1.2]] as [string, number][]) fit(t, s);
+// hung higher on the wall
+for (const [t, up] of [['wallLamp', .35], ['wallBar', .25], ['sconce', .3], ['clock', .4], ['painting', .35], ['shelf', .3], ['mirror', .25]] as [string, number][]) fit(t, 1, 1, 1, up);
+// trees stand three cells tall and take that room
+for (const t of ['tree', 'blossom']) { fit(t, 1.55); TYPES[t].size = [1, 3, 1]; }
+// a car is two cells wide, three long and higher than one cell
+{
+  const g0 = TYPES.car.geo;
+  TYPES.car.geo = () => { const g = g0(); g.translate(0, .5, -.5); g.scale(1.75, 1.7, 1.75); g.translate(.5, -.5, 1); g.computeBoundingBox(); g.computeBoundingSphere(); return g; };
+  TYPES.car.size = [2, 2, 3];
+}
 // a block fills its cell: cubes and solid house parts
 export const isBlock = (t: string) => TYPES[t].cat === 'cube' || !!TYPES[t].solid;
 export const isFlower = (t: string) => TYPES[t].cat === 'flower';

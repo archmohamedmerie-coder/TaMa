@@ -109,6 +109,12 @@ export function loadWorld(list: Entry[], floors?: [number, number, number, strin
   voxels.clear();
   build(list).forEach((v, k) => voxels.set(k, v));
   (floors || []).forEach(e => { const v = inB(e[0], e[1], e[2]) ? voxels.get(K(e[0], e[1], e[2])) : undefined; if (v && TYPES[e[3]]?.flat && !TYPES[v.t].flat) v.f = e[3]; });
+  // a staircase keeps the floor slab open above it and above its foot, so there is headroom to climb
+  voxels.forEach((v, k) => {
+    if (v.of != null || !TYPES[v.t].clears) return;
+    const a = unK(k);
+    for (const o of TYPES[v.t].clears!) { const c = offCell(a[0], a[1], a[2], o, v.r), q = K(c[0], c[1], c[2]); if (inB(c[0], c[1], c[2]) && voxels.get(q)?.t === 'floorSlab') voxels.delete(q); }
+  });
   Object.keys(TYPES).forEach(t => dirty.add(t));
 }
 

@@ -6,10 +6,13 @@ import { world, baseMat, canvas, reduceMotion } from './render';
 import { planePoint } from './pick';
 import { cam, tool } from './input';
 
-/* ---------- the walking character: a small girl, one cell tall, facing +z ---------- */
+/* ---------- the walking character: a girl about a cell and a half tall, facing +z ----------
+   A cell is about one metre: a storey is three cells, a door two, and she stands 1.5 high. */
 const SKIN = 0xf2c9a0, HAIR = 0x5a3a22, DRESS = 0xe2477f, DRESS2 = 0xc93a6e, SHOE = 0x6a3fa6, DARK = 0x2b2140;
 const SPEED = 3.4;  // cells per second
-const R = .22;      // half her width, for bumping into things
+const R = .3;       // half her width, for bumping into things
+const S = 1.85;     // the model is drawn one cell tall and shown at this scale
+const EYE = 1.38;   // her eyes above the floor she stands on
 
 // a limb that swings around a pivot at height pivotY above the cell floor
 function limb(parts: THREE.BufferGeometry[], pivotY: number) {
@@ -28,6 +31,7 @@ const leg = (x: number) => limb([b(.1, .22, .1, SKIN, x, 0, 0), b(.12, .06, .16,
 const arm = (x: number) => limb([b(.08, .24, .08, SKIN, x, .24, 0)], .48);
 const legL = leg(.08), legR = leg(-.08), armL = arm(.2), armR = arm(-.2);
 hero.add(body, legL, legR, armL, armR);
+hero.scale.setScalar(S);
 
 // where she is: x and z anywhere on the ground, y the level she stands on
 let px = 9.5 + OFF, pz = 14.5 + OFF, py = 0, shownY = 0, facing = 0;
@@ -38,7 +42,9 @@ const v3 = new THREE.Vector3();
 /* ---------- where she can stand ---------- */
 // flat pieces and flowers can be walked over, and doors can be walked through
 const passable = (v: Voxel | undefined) => !v || !!TYPES[v.t].flat || TYPES[v.t].cat === 'flower' || !!TYPES[v.t].door || !!TYPES[v.t].thin;
-const free = (x: number, y: number, z: number) => inB(x, y, z) && passable(voxels.get(K(x, y, z)));
+const clear = (x: number, y: number, z: number) => inB(x, y, z) && passable(voxels.get(K(x, y, z)));
+// she is taller than one cell: the cell at her feet and the one at her head must both be open
+const free = (x: number, y: number, z: number) => clear(x, y, z) && (y + 1 >= H || clear(x, y + 1, z));
 const floorAt = (x: number, y: number, z: number) => { if (y === 0) return true; const u = voxels.get(K(x, y - 1, z)); return !!u && isBlock(u.t); };
 const corners = (x: number, z: number) => [[x - R, z - R], [x + R, z - R], [x - R, z + R], [x + R, z + R]].map(c => [Math.floor(c[0]), Math.floor(c[1])]);
 // she fits at this spot when nothing solid touches her on that level
@@ -88,7 +94,7 @@ export function initHero() {
   }
   world.add(hero);
   settleHero();
-  shownY = py; hero.position.set(px, py + .5, pz);
+  shownY = py; hero.position.set(px, py + .5 * S, pz);
 }
 
 export function updateHero(dt: number, now: number) {
@@ -126,18 +132,18 @@ export function updateHero(dt: number, now: number) {
     cam.target.lerp(v3.set(px - N / 2, py, pz - N / 2), Math.min(1, dt * 3));
   }
   shownY += (py - shownY) * Math.min(1, dt * 14);
-  hero.position.set(px, shownY + .5, pz);
+  hero.position.set(px, shownY + .5 * S, pz);
   hero.visible = !view.fp;
-  bob = walking && !reduceMotion ? Math.sin(now * .014) * .02 : 0;
+  bob = walking && !reduceMotion ? Math.sin(now * .011) * .03 : 0;
   const turn = ((facing - hero.rotation.y + Math.PI) % (Math.PI * 2) + Math.PI * 2) % (Math.PI * 2) - Math.PI;
   hero.rotation.y += turn * Math.min(1, dt * 12);
-  const swing = walking && !reduceMotion ? Math.sin(now * .014) * .7 : 0;
+  const swing = walking && !reduceMotion ? Math.sin(now * .011) * .7 : 0;
   legL.rotation.x = swing; legR.rotation.x = -swing; armL.rotation.x = -swing * .8; armR.rotation.x = swing * .8;
 }
 
 let bob = 0;
 // where her eyes are and which way she looks, in world cells
-export const heroEye = () => ({ x: px, y: shownY + .72 + bob, z: pz, f: facing, p: pitch });
+export const heroEye = () => ({ x: px, y: shownY + EYE + bob, z: pz, f: facing, p: pitch });
 // through her eyes: the spot she is walking to, her head tilt, and a marker on the ground
 let goal: { x: number; z: number; left: number } | null = null, pitch = -.05, stuck = 0;
 const mark = new THREE.Mesh(new THREE.CylinderGeometry(.22, .22, .03, 16), new THREE.MeshBasicMaterial({ color: 0xffc22e, transparent: true, opacity: .75 }));

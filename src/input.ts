@@ -122,7 +122,7 @@ export function tap(px: number, py: number) {
 export const cam = { theta: -.5, phi: .9, dist: 34, target: new THREE.Vector3(-1.5, 0, 3.5) };
 // switch between the garden view and the view through the girl's eyes
 export function setFP(on: boolean) {
-  view.fp = on; camera.near = on ? .08 : .5;
+  view.fp = on; camera.near = on ? .08 : .2;
   document.body.classList.toggle('fp', on);   // the palette steps aside for the view
   resize();
 }
@@ -133,11 +133,12 @@ export function placeCamera() {
     camera.position.set(x, e.y, z); camera.lookAt(x + Math.sin(e.f) * cp, e.y + Math.sin(e.p), z + Math.cos(e.f) * cp);
     return;
   }
-  cam.phi = Math.min(1.42, Math.max(.18, cam.phi)); cam.dist = Math.min(72, Math.max(9, cam.dist));
+  cam.phi = Math.min(1.42, Math.max(.18, cam.phi)); cam.dist = Math.min(72, Math.max(2.6, cam.dist));
   cam.target.x = Math.min(N / 2, Math.max(-N / 2, cam.target.x)); cam.target.z = Math.min(N / 2, Math.max(-N / 2, cam.target.z));
-  const s = Math.sin(cam.phi);
-  camera.position.set(cam.target.x + cam.dist * s * Math.sin(cam.theta), cam.target.y + cam.dist * Math.cos(cam.phi), cam.target.z + cam.dist * s * Math.cos(cam.theta));
-  camera.lookAt(cam.target);
+  // zoomed right in, the view rises from the ground to the height of the girl and the furniture
+  const s = Math.sin(cam.phi), ty = cam.target.y + Math.max(0, 1 - cam.dist / 14) * 1.2;
+  camera.position.set(cam.target.x + cam.dist * s * Math.sin(cam.theta), ty + cam.dist * Math.cos(cam.phi), cam.target.z + cam.dist * s * Math.cos(cam.theta));
+  camera.lookAt(cam.target.x, ty, cam.target.z);
 }
 function pan(dx: number, dy: number) {
   const k = cam.dist * .0016, c = Math.cos(cam.theta), s = Math.sin(cam.theta);

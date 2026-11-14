@@ -11,7 +11,7 @@ export const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha
 renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
 renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 export const scene = new THREE.Scene();
-export const camera = new THREE.PerspectiveCamera(42, 1, .5, 400);
+export const camera = new THREE.PerspectiveCamera(42, 1, .2, 400);
 const hemi = new THREE.HemisphereLight(0xe6f6ff, 0x8fb86a, 1.7); scene.add(hemi);
 const sun = new THREE.DirectionalLight(0xfff1d0, 2.6);
 sun.position.set(20, 26, 7); sun.castShadow = true;
