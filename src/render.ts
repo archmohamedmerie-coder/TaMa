@@ -1,6 +1,6 @@
 import * as THREE from 'three';
-import { TYPES, isBlock, isFlower } from './types';
-import { N, voxels, unK, view, cellsOf } from './world';
+import { TYPES, isBlock, isFlower, fenceGeo } from './types';
+import { N, K, inB, voxels, unK, view, cellsOf } from './world';
 import { state } from './save';
 
 export const reduceMotion = !!window.matchMedia && matchMedia('(prefers-reduced-motion:reduce)').matches;
@@ -83,7 +83,7 @@ function splitPaint(t: string) {
   };
   return { paint: make(A), keep: B.p.length ? make(B) : null };
 }
-function fill(key: string, geo: THREE.BufferGeometry, t: string, list: number[], painted: boolean, mat?: THREE.Material, floor?: boolean) {
+function fill(key: string, geo: THREE.BufferGeometry, t: string, list: number[], painted: boolean, mat?: THREE.Material, floor?: boolean, fixed?: boolean) {
   let m = MESH[key];
   if (!m || m.userData.cap < list.length) {
     if (m) { world.remove(m); m.dispose(); }
@@ -95,10 +95,10 @@ function fill(key: string, geo: THREE.BufferGeometry, t: string, list: number[],
   list.forEach((k, i) => {
     const c = unK(k), v = voxels.get(k)!;
     dummy.position.set(c[0] + .5, c[1] + .5, c[2] + .5); // a floor under a piece keeps its own direction and is never hidden with the piece
-    dummy.rotation.set(0, floor ? 0 : (v.r || 0) * Math.PI / 4, 0); dummy.scale.setScalar(!floor && view.hidden.has(k) ? 0 : 1); dummy.updateMatrix();
+    dummy.rotation.set(0, floor || fixed ? 0 : (v.r || 0) * Math.PI / 4, 0); dummy.scale.setScalar(!floor && view.hidden.has(k) ? 0 : 1); dummy.updateMatrix();
     m.setMatrixAt(i, dummy.matrix);
     const j = isBlock(t) ? .95 + ((c[0] * 7 + c[1] * 13 + c[2] * 29) % 10) / 100 : 1;
-    m.setColorAt(i, painted ? tint.setHex(v.c!).multiplyScalar(j) : tint.setRGB(j, j, j));
+    m.setColorAt(i, painted || (fixed && v.c != null) ? tint.setHex(v.c!).multiplyScalar(j) : tint.setRGB(j, j, j));
   });
   m.visible = !(view.hideRoofs && !!TYPES[t].roof);
   m.count = list.length; m.instanceMatrix.needsUpdate = true; if (m.instanceColor) m.instanceColor.needsUpdate = true;
@@ -107,7 +107,22 @@ function fill(key: string, geo: THREE.BufferGeometry, t: string, list: number[],
 export function applyRoofs() {
   for (const key in MESH) MESH[key].visible = !(view.hideRoofs && !!TYPES[key.split('#')[0]].roof);
 }
+// Fences reach towards neighbouring fences, gates and walls, so a run needs no turning by hand.
+// One mesh per combination of sides joined; a fence on its own stays a straight piece.
+const FENCE: Record<number, THREE.BufferGeometry> = {};
+function rebuildFence() {
+  const groups: number[][] = []; for (let i = 0; i < 16; i++) groups.push([]);
+  const joins = (x: number, y: number, z: number) => { const v = inB(x, y, z) ? voxels.get(K(x, y, z)) : undefined; return !!v && (v.t === 'fence' || v.t === 'gate' || isBlock(v.t)); };
+  voxels.forEach((v, k) => {
+    if (v.t !== 'fence') return;
+    const c = unK(k);
+    const mask = (joins(c[0] + 1, c[1], c[2]) ? 1 : 0) | (joins(c[0] - 1, c[1], c[2]) ? 2 : 0) | (joins(c[0], c[1], c[2] + 1) ? 4 : 0) | (joins(c[0], c[1], c[2] - 1) ? 8 : 0);
+    groups[mask || (v.r & 2 ? 12 : 3)].push(k);
+  });
+  for (let m = 1; m < 16; m++) if (groups[m].length || MESH['fence@' + m]) fill('fence@' + m, FENCE[m] || (FENCE[m] = fenceGeo(m)), 'fence', groups[m], false, undefined, false, true);
+}
 function rebuildBase(t: string) {
+  if (t === 'fence') { rebuildFence(); return; }
   const plain: number[] = [], painted: number[] = [], under: number[] = [];
   voxels.forEach((v, k) => {
     if (v.t === t && v.of == null) (v.c == null ? plain : painted).push(k);

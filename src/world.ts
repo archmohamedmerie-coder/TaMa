@@ -114,6 +114,7 @@ export function loadWorld(list: Entry[], floors?: [number, number, number, strin
 /* ---------- editing with undo ---------- */
 export const undoStack: Op[] = [], redoStack: Op[] = [];
 export function applyOp(op: Op, fwd: boolean) {
+  dirty.add('fence');
   op.forEach(e => {
     const v = fwd ? e.b : e.a, old = voxels.get(e.k);
     if (old) { dirty.add(old.t); if (old.f) dirty.add(old.f); }

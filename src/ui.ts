@@ -45,7 +45,7 @@ const PAINTS: [string, number | null][] = [['الأصلي', null], ['أحمر', 
   ['أزرق', 0x3a66d6], ['بنفسجي', 0x9b6fd6], ['وردي', 0xf08fb6], ['أبيض', 0xf6f2ea], ['بني', 0x9a6b3f], ['رمادي', 0x8c8c99]];
 const hex = (c: number) => '#' + c.toString(16).padStart(6, '0');
 // wall materials offered by the room tool
-const WALLS = ['white', 'brick', 'wood', 'stone'];
+const WALLS = ['white', 'brick', 'wood', 'stone', 'barn'];
 // roof tool: shapes (with the piece whose picture stands for them) and materials
 const ROOF_SHAPES: [string, string, string | null][] = [['gable', 'جملون', 'roofTop'], ['hip', 'هرمي', 'roofPeak'], ['shed', 'مائل', 'roof'], ['flat', 'مسطّح', 'roofEdge'], ['none', 'بلا سقف', null]];
 const ROOF_MATS: [string, number | null, string][] = [['قرميد', null, '#c8553d'], ['خشب', 0x9a6b3f, '#9a6b3f'], ['أردواز', 0x6b7280, '#6b7280']];
