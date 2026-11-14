@@ -57,3 +57,13 @@ export function targetFor(hit: Hit | null, sel: string): Target | null {
   }
   return { cell: c, act: 'place' };
 }
+// where the ray under a screen point crosses the horizontal plane at height h (world cells), or null above the horizon
+export function planePoint(px: number, py: number, h: number): [number, number] | null {
+  const r = canvas.getBoundingClientRect();
+  ndc.set((px - r.left) / r.width * 2 - 1, -((py - r.top) / r.height) * 2 + 1);
+  raycaster.setFromCamera(ndc, camera);
+  const o = raycaster.ray.origin, d = raycaster.ray.direction;
+  if (d.y > -1e-3) return null;
+  const t = (h - o.y) / d.y;
+  return [o.x + d.x * t + N / 2, o.z + d.z * t + N / 2];
+}

@@ -5,7 +5,7 @@ import { canvas, camera, ghost } from './render';
 import { pick, targetFor } from './pick';
 import { sfx } from './audio';
 import { say, undo, redo } from './ui';
-import { walkTo } from './hero';
+import { setFinger, clearFinger } from './hero';
 
 // current tool, shared with the palette in ui.ts
 export type Mode = 'build' | 'erase' | 'paint' | 'turn' | 'walk';
@@ -15,7 +15,7 @@ export const tool: { mode: Mode; selected: string; color: number | null } = { mo
 export function tap(px: number, py: number) {
   const hit = pick(px, py);
   if (!hit) return;
-  if (tool.mode === 'walk') { if (walkTo(hit)) sfx.tick(); return; }
+  if (tool.mode === 'walk') return;
   if (tool.mode === 'erase') {
     if (hit.ground) return;
     const k = K(hit.cell[0], hit.cell[1], hit.cell[2]), op: Op = [{ k, a: hit.v, b: null }];
@@ -65,7 +65,8 @@ function pan(dx: number, dy: number) {
 interface Ptr { x: number; y: number; sx: number; sy: number; t: number }
 type Gest =
   | { type: 'tap'; moved: boolean; pan: boolean }
-  | { type: 'pinch'; d0: number; dist0: number; mx: number; my: number }
+  | { type: 'pinch'; d0: number; dist0: number; mx: number; my: number; a: number }
+  | { type: 'walk' }
   | { type: 'done' };
 const ptrs = new Map<number, Ptr>(); let gest: Gest | null = null;
 
@@ -83,8 +84,12 @@ export function initInput() {
   canvas.addEventListener('pointerdown', e => {
     try { canvas.setPointerCapture(e.pointerId); } catch (_) { /* ignore */ }
     ptrs.set(e.pointerId, { x: e.clientX, y: e.clientY, sx: e.clientX, sy: e.clientY, t: performance.now() });
-    if (ptrs.size === 1) gest = { type: 'tap', moved: false, pan: e.button === 2 || e.shiftKey };
-    else if (ptrs.size === 2) { const a = [...ptrs.values()]; gest = { type: 'pinch', d0: Math.hypot(a[0].x - a[1].x, a[0].y - a[1].y) || 1, dist0: cam.dist, mx: (a[0].x + a[1].x) / 2, my: (a[0].y + a[1].y) / 2 }; }
+    if (ptrs.size === 1) {
+      // with the walk tool, a finger on the screen is where she walks to
+      if (tool.mode === 'walk' && e.button !== 2 && !e.shiftKey) { gest = { type: 'walk' }; setFinger(e.clientX, e.clientY); }
+      else gest = { type: 'tap', moved: false, pan: e.button === 2 || e.shiftKey };
+    }
+    else if (ptrs.size === 2) { const a = [...ptrs.values()]; gest = { type: 'pinch', d0: Math.hypot(a[0].x - a[1].x, a[0].y - a[1].y) || 1, dist0: cam.dist, mx: (a[0].x + a[1].x) / 2, my: (a[0].y + a[1].y) / 2, a: Math.atan2(a[1].y - a[0].y, a[1].x - a[0].x) }; clearFinger(); }
     ghost.visible = false;
   });
   canvas.addEventListener('pointermove', e => {
@@ -92,16 +97,21 @@ export function initInput() {
     if (!p) { if (e.pointerType === 'mouse') hover(e.clientX, e.clientY); return; }
     const dx = e.clientX - p.x, dy = e.clientY - p.y; p.x = e.clientX; p.y = e.clientY;
     if (!gest) return;
+    if (gest.type === 'walk') { if (ptrs.size === 1) setFinger(p.x, p.y); return; }
     if (gest.type === 'tap' && ptrs.size === 1) {
       if (!gest.moved && Math.hypot(p.x - p.sx, p.y - p.sy) > 9) gest.moved = true;
       if (gest.moved) { if (gest.pan) pan(dx, dy); else { cam.theta -= dx * .0065; cam.phi -= dy * .0055; } }
     } else if (gest.type === 'pinch' && ptrs.size === 2) {
       const a = [...ptrs.values()], d = Math.hypot(a[0].x - a[1].x, a[0].y - a[1].y) || 1, mx = (a[0].x + a[1].x) / 2, my = (a[0].y + a[1].y) / 2;
       cam.dist = gest.dist0 * gest.d0 / d; pan(mx - gest.mx, my - gest.my); gest.mx = mx; gest.my = my;
+      // twisting two fingers turns the garden
+      const ang = Math.atan2(a[1].y - a[0].y, a[1].x - a[0].x);
+      cam.theta += ((ang - gest.a + Math.PI * 3) % (Math.PI * 2)) - Math.PI; gest.a = ang;
     }
   });
   function up(e: PointerEvent) {
     const p = ptrs.get(e.pointerId); if (!p) return;
+    if (gest && gest.type === 'walk') clearFinger();
     const wasTap = gest && gest.type === 'tap' && !gest.moved && ptrs.size === 1 && performance.now() - p.t < 700 && e.type === 'pointerup';
     ptrs.delete(e.pointerId);
     if (ptrs.size === 0) gest = null; else if (gest) gest = { type: 'done' };

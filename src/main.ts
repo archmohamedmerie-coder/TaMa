@@ -6,7 +6,7 @@ import { pick } from './pick';
 import { tap, cam, placeCamera, initInput } from './input';
 import { checkGoals, stats } from './mission';
 import { $, buildPalette, syncUndo, initUI } from './ui';
-import { initHero, settleHero, updateHero, heroCell } from './hero';
+import { initHero, settleHero, updateHero, heroCell, setFinger, clearFinger } from './hero';
 
 hooks.afterChange = () => { checkGoals(false); updateLife(); settleHero(); save(); };
 hooks.syncUndo = syncUndo;
@@ -36,4 +36,4 @@ function tick(now: number) {
 }
 function frame(now: number) { tick(now); requestAnimationFrame(frame); }
 requestAnimationFrame(frame);
-(window as any).__garden = { tap, pick, voxels, state, cam, stats, heroCell, tick };
+(window as any).__garden = { tap, pick, voxels, state, cam, stats, heroCell, tick, setFinger, clearFinger, camera };
