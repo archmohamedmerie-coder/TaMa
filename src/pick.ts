@@ -1,6 +1,6 @@
 import * as THREE from 'three';
-import { isBlock } from './types';
-import { N, H, K, inB, voxels, type Voxel } from './world';
+import { TYPES, isBlock } from './types';
+import { N, H, K, inB, voxels, view, type Voxel } from './world';
 import { canvas, camera } from './render';
 
 export type Hit =
@@ -32,7 +32,8 @@ export function pick(px: number, py: number): Hit | null {
   const tDelta = d.map(v => Math.abs(v) < 1e-9 ? 1e9 : Math.abs(1 / v));
   for (let n = 0; n < 200; n++) {
     const k = K(cell[0], cell[1], cell[2]), v = voxels.get(k);
-    if (v) { const nrm = [0, 0, 0]; if (axis >= 0) nrm[axis] = -step[axis]; return { cell: cell.slice(), v, normal: axis >= 0 ? nrm : null }; }
+    // hidden roofs let the tap through to the rooms below
+    if (v && !(view.hideRoofs && TYPES[v.t].roof)) { const nrm = [0, 0, 0]; if (axis >= 0) nrm[axis] = -step[axis]; return { cell: cell.slice(), v, normal: axis >= 0 ? nrm : null }; }
     axis = tMax[0] < tMax[1] ? (tMax[0] < tMax[2] ? 0 : 2) : (tMax[1] < tMax[2] ? 1 : 2);
     const prev = cell.slice();
     cell[axis] += step[axis]; tMax[axis] += tDelta[axis];

@@ -1,9 +1,9 @@
 import * as THREE from 'three';
 import { TYPES, CATS, type Cat } from './types';
-import { defaultWorld, replaceWorld, undoStack, redoStack, undo as undoOp, redo as redoOp } from './world';
+import { defaultWorld, replaceWorld, view, undoStack, redoStack, undo as undoOp, redo as redoOp } from './world';
 import { state, save } from './save';
 import { sfx } from './audio';
-import { GEO, baseMat, ghost, applyNight, reduceMotion } from './render';
+import { GEO, baseMat, ghost, applyNight, applyRoofs, reduceMotion } from './render';
 import { STAR_PATH, starTotal, hint } from './mission';
 import { tool, type Mode } from './input';
 
@@ -82,6 +82,7 @@ export function initUI() {
   $('makkoBtn').onclick = hint;
   $('missionBtn').onclick = () => { const o = $('mission').classList.toggle('open'); $('missionBtn').setAttribute('aria-expanded', String(o)); };
   $('nightBtn').onclick = () => { state.night = !state.night; applyNight(); save(); say(state.night ? 'حلّ الليل. الفوانيس تضيء الحديقة.' : 'أشرقت الشمس من جديد.', 3000); };
+  $('roofBtn').onclick = () => { view.hideRoofs = !view.hideRoofs; applyRoofs(); ghost.visible = false; $('roofBtn').classList.toggle('off', view.hideRoofs); say(view.hideRoofs ? 'أخفيتُ الأسقف. الآن ترين داخل البيوت.' : 'عادت الأسقف إلى مكانها.', 3000); };
   $('soundBtn').onclick = () => { state.muted = !state.muted; $('soundBtn').classList.toggle('off', state.muted); save(); };
   $('resetBtn').onclick = () => $('confirm').classList.add('open');
   $('confirmNo').onclick = () => $('confirm').classList.remove('open');

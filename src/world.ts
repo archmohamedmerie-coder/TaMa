@@ -12,6 +12,8 @@ export const K = (x: number, y: number, z: number) => x + N * (z + N * y);
 export const unK = (k: number): [number, number, number] => { const x = k % N, z = Math.floor(k / N) % N, y = Math.floor(k / (N * N)); return [x, y, z]; };
 export const inB = (x: number, y: number, z: number) => x >= 0 && x < N && z >= 0 && z < N && y >= 0 && y < H;
 export const dirty = new Set<string>();
+// view options that are not part of the saved world
+export const view = { hideRoofs: false };
 
 // wired in main.ts so this module stays free of UI, audio and rendering
 export const hooks = { afterChange: () => {}, syncUndo: () => {} };

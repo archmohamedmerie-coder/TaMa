@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { TYPES, isBlock, isFlower } from './types';
-import { N, voxels, unK } from './world';
+import { N, voxels, unK, view } from './world';
 import { state } from './save';
 
 export const reduceMotion = !!window.matchMedia && matchMedia('(prefers-reduced-motion:reduce)').matches;
@@ -98,7 +98,12 @@ function fill(key: string, geo: THREE.BufferGeometry, t: string, list: number[],
     const j = isBlock(t) ? .95 + ((c[0] * 7 + c[1] * 13 + c[2] * 29) % 10) / 100 : 1;
     m.setColorAt(i, painted ? tint.setHex(v.c!).multiplyScalar(j) : tint.setRGB(j, j, j));
   });
+  m.visible = !(view.hideRoofs && !!TYPES[t].roof);
   m.count = list.length; m.instanceMatrix.needsUpdate = true; if (m.instanceColor) m.instanceColor.needsUpdate = true;
+}
+// show or hide every roof piece
+export function applyRoofs() {
+  for (const key in MESH) MESH[key].visible = !(view.hideRoofs && !!TYPES[key.split('#')[0]].roof);
 }
 export function rebuild(t: string) {
   const plain: number[] = [], painted: number[] = [];

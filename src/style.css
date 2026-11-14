@@ -122,3 +122,8 @@ button:focus-visible{outline:3px solid var(--berry);outline-offset:2px}
 /* five tabs and six tools need a little less room on small screens */
 @media (max-width:640px){.tab{font-size:14px;padding:5px 4px}}
 @media (max-height:560px){.tools{grid-template-columns:1fr 1fr;gap:8px}}
+
+/* six tabs: let the row scroll instead of squeezing the labels */
+.tabs{overflow-x:auto;scrollbar-width:none}
+.tabs::-webkit-scrollbar{display:none}
+.tab{flex:1 0 auto}
