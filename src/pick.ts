@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { isCube } from './types';
+import { isBlock } from './types';
 import { N, H, K, inB, voxels, type Voxel } from './world';
 import { canvas, camera } from './render';
 
@@ -44,15 +44,15 @@ export function pick(px: number, py: number): Hit | null {
 export function targetFor(hit: Hit | null, sel: string): Target | null {
   if (!hit) return null;
   if (hit.ground) return { cell: hit.cell, act: 'place' };
-  if (!isCube(hit.v.t)) return { cell: hit.cell, act: hit.v.t === sel ? 'turn' : 'replace' };
+  if (!isBlock(hit.v.t)) return { cell: hit.cell, act: hit.v.t === sel ? 'turn' : 'replace' };
   if (!hit.normal) return null;
   const c = [hit.cell[0] + hit.normal[0], hit.cell[1] + hit.normal[1], hit.cell[2] + hit.normal[2]];
   if (c[1] >= H) return { err: 'high' };
   if (!inB(c[0], c[1], c[2])) return { err: 'edge' };
   if (voxels.has(K(c[0], c[1], c[2]))) return null;
-  if (!isCube(sel)) {
+  if (!isBlock(sel)) {
     while (c[1] > 0 && !voxels.has(K(c[0], c[1] - 1, c[2]))) c[1]--;
-    if (c[1] > 0 && !isCube(voxels.get(K(c[0], c[1] - 1, c[2]))!.t)) return { err: 'support' };
+    if (c[1] > 0 && !isBlock(voxels.get(K(c[0], c[1] - 1, c[2]))!.t)) return { err: 'support' };
   }
   return { cell: c, act: 'place' };
 }

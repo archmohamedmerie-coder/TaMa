@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 
-export type Cat = 'cube' | 'flower' | 'decor';
+export type Cat = 'cube' | 'flower' | 'decor' | 'house' | 'animal';
 export interface PieceType {
   name: string;
   cat: Cat;
@@ -8,6 +8,7 @@ export interface PieceType {
   stars?: number;
   flat?: boolean;
   glow?: boolean;
+  solid?: boolean; // fills its cell like a cube: other pieces can be built on and beside it
   keep?: number[]; // part colours that paint does not cover
 }
 type V3 = [number, number, number];
@@ -47,6 +48,7 @@ function M(parts: Geo[]): Geo {
 }
 const cube = (color: number) => M([b(1, 1, 1, color, 0, 0, 0)]);
 const STEM = 0x3c9a45, LEAF = 0x57b85a;
+const WALL = 0xf6f2ea, GLASS = 0x8fd3f4, ROOF = 0xc8553d, ROOF2 = 0xb5482f, DARK = 0x2b2140, STEPS = [0, 1, 2, 3];
 const stem = (x: number, z: number, h: number, t?: number): Geo[] =>
   [b(t || .06, h, t || .06, STEM, x, 0, z), b(.16, .04, .09, LEAF, x + .09, h * .4, z)];
 const SPOTS = [[-.22, -.16, .34], [.2, -.04, .46], [-.03, .22, .28]];
@@ -85,15 +87,56 @@ export const TYPES: Record<string, PieceType> = {
   tile: { name: 'بلاطة', cat: 'decor', flat: true, geo: () => M([b(.98, .06, .98, 0xd9c7a3, 0, 0, 0), b(.8, .075, .8, 0xe8d9b8, 0, 0, 0)]) },
   fountain: { name: 'نافورة', cat: 'decor', stars: 1, geo: () => M([cyl(.48, .5, .24, 0xb9b9c6, 0), cyl(.4, .4, .03, 0x55bdf2, .24), cyl(.07, .1, .5, 0xc9c9d4, .24), cyl(.26, .12, .1, 0xb9b9c6, .7), cyl(.21, .21, .03, 0x55bdf2, .8), b(.08, .14, .08, 0x9adbfa, 0, .83, 0)]) },
   lantern: { name: 'فانوس', cat: 'decor', stars: 2, glow: true, geo: () => M([b(.22, .06, .22, 0x4a4458, 0, 0, 0), b(.08, .8, .08, 0x4a4458, 0, .06, 0), b(.24, .24, .24, 0xffe38a, 0, .86, 0), b(.3, .05, .3, 0x4a4458, 0, 1.1, 0)]) },
-  bunny: { name: 'أرنب', cat: 'decor', stars: 3, geo: () => M([b(.3, .26, .4, 0xffffff, 0, .05, -.04), b(.1, .05, .14, 0xf2ece0, -.1, 0, .1), b(.1, .05, .14, 0xf2ece0, .1, 0, .1), b(.26, .24, .24, 0xffffff, 0, .28, .14),
+  bunny: { name: 'أرنب', cat: 'animal', stars: 3, geo: () => M([b(.3, .26, .4, 0xffffff, 0, .05, -.04), b(.1, .05, .14, 0xf2ece0, -.1, 0, .1), b(.1, .05, .14, 0xf2ece0, .1, 0, .1), b(.26, .24, .24, 0xffffff, 0, .28, .14),
     b(.07, .26, .05, 0xffffff, -.07, .52, .12), b(.07, .26, .05, 0xffffff, .07, .52, .12), b(.03, .18, .02, 0xf7a8c4, -.07, .55, .146), b(.03, .18, .02, 0xf7a8c4, .07, .55, .146),
-    b(.1, .1, .1, 0xffffff, 0, .14, -.28), b(.04, .05, .02, 0x2b2140, -.07, .4, .26), b(.04, .05, .02, 0x2b2140, .07, .4, .26), b(.05, .04, .02, 0xf06a9b, 0, .33, .26)]) }
+    b(.1, .1, .1, 0xffffff, 0, .14, -.28), b(.04, .05, .02, 0x2b2140, -.07, .4, .26), b(.04, .05, .02, 0x2b2140, .07, .4, .26), b(.05, .04, .02, 0xf06a9b, 0, .33, .26)]) },
+
+  /* ---------- house parts ---------- */
+  window: { name: 'نافذة', cat: 'house', solid: true, keep: [GLASS], geo: () => M([b(1, 1, 1, WALL, 0, 0, 0)].concat(...[.505, -.505].map(o => [
+    b(.56, .56, .02, GLASS, 0, .22, o), b(.06, .56, .03, 0xffffff, 0, .22, o * 1.01), b(.56, .06, .03, 0xffffff, 0, .47, o * 1.01),
+    b(.02, .56, .56, GLASS, o, .22, 0), b(.03, .56, .06, 0xffffff, o * 1.01, .22, 0), b(.03, .06, .56, 0xffffff, o * 1.01, .47, 0)]))) },
+  door: { name: 'باب', cat: 'house', solid: true, keep: [0x8a5a33, 0xa9683a, 0xffd24a], geo: () => M([b(1, 1, 1, WALL, 0, 0, 0)].concat(...[1, -1].map(s => [
+    b(.5, .86, .03, 0x8a5a33, 0, 0, s * .505), b(.34, .3, .02, 0xa9683a, 0, .46, s * .52), b(.06, .06, .04, 0xffd24a, s * .15, .38, s * .53)]))) },
+  roof: { name: 'سقف مائل', cat: 'house', solid: true, geo: () => M(STEPS.map(i => b(1, .25, 1 - i * .25, i % 2 ? ROOF2 : ROOF, 0, i * .25, -i * .125))) },
+  roofCorner: { name: 'زاوية سقف', cat: 'house', solid: true, geo: () => M(STEPS.map(i => b(1 - i * .25, .25, 1 - i * .25, i % 2 ? ROOF2 : ROOF, -i * .125, i * .25, -i * .125))) },
+  roofTop: { name: 'قمة سقف', cat: 'house', solid: true, geo: () => M(STEPS.map(i => b(1, .25, 1 - i * .25, i % 2 ? ROOF2 : ROOF, 0, i * .25, 0))) },
+  roofPeak: { name: 'قمة برج', cat: 'house', solid: true, geo: () => M(STEPS.map(i => b(1 - i * .25, .25, 1 - i * .25, i % 2 ? ROOF2 : ROOF, 0, i * .25, 0))) },
+  chimney: { name: 'مدخنة', cat: 'house', keep: [DARK], geo: () => M([b(.4, .7, .4, 0xa8523a, 0, 0, 0), b(.5, .1, .5, 0x8c3f2b, 0, .7, 0), b(.3, .04, .3, DARK, 0, .8, 0)]) },
+
+  /* ---------- animals (all face +z) ---------- */
+  cow: { name: 'بقرة', cat: 'animal', geo: () => M([b(.5, .38, .8, 0xffffff, 0, .28, -.05),
+    b(.02, .18, .25, DARK, .255, .4, -.1), b(.02, .14, .2, DARK, -.255, .42, .05), b(.25, .02, .25, DARK, .05, .66, -.2),
+    b(.12, .28, .12, 0xffffff, .17, 0, .25), b(.12, .28, .12, 0xffffff, -.17, 0, .25), b(.12, .28, .12, 0xffffff, .17, 0, -.33), b(.12, .28, .12, 0xffffff, -.17, 0, -.33),
+    b(.34, .3, .28, 0xffffff, 0, .5, .4), b(.26, .14, .08, 0xf7b6c4, 0, .5, .56), b(.05, .06, .02, DARK, .1, .68, .545), b(.05, .06, .02, DARK, -.1, .68, .545),
+    b(.05, .1, .05, 0xe8dcc0, .14, .8, .38), b(.05, .1, .05, 0xe8dcc0, -.14, .8, .38), b(.08, .06, .05, DARK, .2, .72, .36), b(.08, .06, .05, DARK, -.2, .72, .36),
+    b(.04, .25, .04, 0xffffff, 0, .4, -.47), b(.16, .06, .16, 0xf7b6c4, 0, .22, -.2)]) },
+  sheep: { name: 'خروف', cat: 'animal', geo: () => M([b(.5, .42, .66, 0xf4efe6, 0, .2, -.05), b(.4, .1, .5, 0xf4efe6, 0, .62, -.05),
+    b(.09, .2, .09, 0x4a4458, .15, 0, .18), b(.09, .2, .09, 0x4a4458, -.15, 0, .18), b(.09, .2, .09, 0x4a4458, .15, 0, -.28), b(.09, .2, .09, 0x4a4458, -.15, 0, -.28),
+    b(.24, .24, .2, 0x4a4458, 0, .4, .36), b(.26, .08, .16, 0xf4efe6, 0, .64, .32), b(.04, .05, .02, 0xfffffe, .07, .52, .465), b(.04, .05, .02, 0xfffffe, -.07, .52, .465),
+    b(.07, .05, .05, 0x4a4458, .155, .54, .36), b(.07, .05, .05, 0x4a4458, -.155, .54, .36)]) },
+  chicken: { name: 'دجاجة', cat: 'animal', geo: () => M([b(.26, .24, .34, 0xffffff, 0, .12, -.02), b(.14, .2, .08, 0xffffff, 0, .26, -.2), b(.18, .18, .18, 0xffffff, 0, .34, .14),
+    b(.05, .07, .12, 0xe5383b, 0, .52, .14), b(.08, .05, .07, 0xff9a2e, 0, .4, .26), b(.05, .06, .03, 0xe5383b, 0, .33, .245),
+    b(.02, .04, .04, DARK, .095, .44, .18), b(.02, .04, .04, DARK, -.095, .44, .18), b(.04, .12, .04, 0xff9a2e, .07, 0, 0), b(.04, .12, .04, 0xff9a2e, -.07, 0, 0),
+    b(.04, .14, .2, 0xeee6d8, .14, .18, -.02), b(.04, .14, .2, 0xeee6d8, -.14, .18, -.02)]) },
+  duck: { name: 'بطة', cat: 'animal', geo: () => M([b(.26, .2, .38, 0xffd94a, 0, .1, -.02), b(.12, .08, .08, 0xffd94a, 0, .24, -.22), b(.18, .18, .18, 0xffd94a, 0, .28, .16),
+    b(.14, .04, .1, 0xff9a2e, 0, .32, .29), b(.02, .04, .04, DARK, .095, .38, .2), b(.02, .04, .04, DARK, -.095, .38, .2),
+    b(.05, .1, .05, 0xff9a2e, .07, 0, 0), b(.05, .1, .05, 0xff9a2e, -.07, 0, 0), b(.04, .1, .22, 0xf2c530, .14, .14, -.02), b(.04, .1, .22, 0xf2c530, -.14, .14, -.02)]) },
+  horse: { name: 'حصان', cat: 'animal', geo: () => M([b(.36, .36, .78, 0xa9683a, 0, .42, -.08),
+    b(.1, .42, .1, 0xa9683a, .12, 0, .22), b(.1, .42, .1, 0xa9683a, -.12, 0, .22), b(.1, .42, .1, 0xa9683a, .12, 0, -.38), b(.1, .42, .1, 0xa9683a, -.12, 0, -.38),
+    b(.2, .4, .2, 0xa9683a, 0, .62, .3), b(.2, .2, .36, 0xa9683a, 0, .9, .42), b(.06, .42, .1, 0x3d2a1c, 0, .7, .17), b(.08, .36, .08, 0x3d2a1c, 0, .38, -.5),
+    b(.02, .05, .05, DARK, .1, .99, .42), b(.02, .05, .05, DARK, -.1, .99, .42), b(.05, .08, .05, 0xa9683a, .07, 1.1, .3), b(.05, .08, .05, 0xa9683a, -.07, 1.1, .3)]) },
+  cat: { name: 'قطة', cat: 'animal', geo: () => M([b(.2, .2, .42, 0xff9d3c, 0, .14, -.06), b(.21, .02, .06, 0xd97a1e, 0, .34, -.05), b(.21, .02, .06, 0xd97a1e, 0, .34, -.18),
+    b(.06, .14, .06, 0xff9d3c, .07, 0, .1), b(.06, .14, .06, 0xff9d3c, -.07, 0, .1), b(.06, .14, .06, 0xff9d3c, .07, 0, -.22), b(.06, .14, .06, 0xff9d3c, -.07, 0, -.22),
+    b(.24, .2, .2, 0xff9d3c, 0, .28, .2), b(.07, .08, .05, 0xff9d3c, .08, .48, .2), b(.07, .08, .05, 0xff9d3c, -.08, .48, .2),
+    b(.04, .05, .02, 0x3f9b4b, .06, .38, .3), b(.04, .05, .02, 0x3f9b4b, -.06, .38, .3), b(.04, .03, .02, 0xf06a9b, 0, .34, .3), b(.06, .3, .06, 0xff9d3c, 0, .2, -.3)]) },
 };
-export const CATS: [Cat, string][] = [['flower', 'زهور'], ['cube', 'مكعبات'], ['decor', 'زينة']];
+export const CATS: [Cat, string][] = [['flower', 'زهور'], ['cube', 'مكعبات'], ['house', 'بيت'], ['decor', 'زينة'], ['animal', 'حيوانات']];
 for (const t in TYPES) if (TYPES[t].cat === 'flower') TYPES[t].keep = [STEM, LEAF, 0x6b4423];
 TYPES.tree.keep = TYPES.blossom.keep = [0x8a5a33];
 TYPES.fountain.keep = [0x55bdf2, 0x9adbfa];
 TYPES.lantern.keep = [0x4a4458];
-TYPES.bunny.keep = [0x2b2140, 0xf06a9b, 0xf7a8c4];
-export const isCube = (t: string) => TYPES[t].cat === 'cube';
+// animals keep their faces, beaks, combs and manes
+for (const t in TYPES) if (TYPES[t].cat === 'animal') TYPES[t].keep = [DARK, 0xf06a9b, 0xf7a8c4, 0xf7b6c4, 0xff9a2e, 0xe5383b, 0x3d2a1c, 0x4a4458, 0x3f9b4b, 0xfffffe, 0xe8dcc0];
+// a block fills its cell: cubes and solid house parts
+export const isBlock = (t: string) => TYPES[t].cat === 'cube' || !!TYPES[t].solid;
 export const isFlower = (t: string) => TYPES[t].cat === 'flower';

@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { TYPES, isCube, isFlower } from './types';
+import { TYPES, isBlock, isFlower } from './types';
 import { N, voxels, unK } from './world';
 import { state } from './save';
 
@@ -95,7 +95,7 @@ function fill(key: string, geo: THREE.BufferGeometry, t: string, list: number[],
     const c = unK(k), v = voxels.get(k)!;
     dummy.position.set(c[0] + .5, c[1] + .5, c[2] + .5); dummy.rotation.set(0, (v.r || 0) * Math.PI / 4, 0); dummy.updateMatrix();
     m.setMatrixAt(i, dummy.matrix);
-    const j = isCube(t) ? .95 + ((c[0] * 7 + c[1] * 13 + c[2] * 29) % 10) / 100 : 1;
+    const j = isBlock(t) ? .95 + ((c[0] * 7 + c[1] * 13 + c[2] * 29) % 10) / 100 : 1;
     m.setColorAt(i, painted ? tint.setHex(v.c!).multiplyScalar(j) : tint.setRGB(j, j, j));
   });
   m.count = list.length; m.instanceMatrix.needsUpdate = true; if (m.instanceColor) m.instanceColor.needsUpdate = true;

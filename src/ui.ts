@@ -59,7 +59,7 @@ export function buildPalette() {
   }).join('');
 }
 
-function setMode(m: Mode) { tool.mode = m; $('tBuild').classList.toggle('on', m === 'build'); $('tErase').classList.toggle('on', m === 'erase'); $('tPaint').classList.toggle('on', m === 'paint'); ghost.visible = false; buildPalette(); }
+function setMode(m: Mode) { tool.mode = m; $('tBuild').classList.toggle('on', m === 'build'); $('tErase').classList.toggle('on', m === 'erase'); $('tPaint').classList.toggle('on', m === 'paint'); $('tTurn').classList.toggle('on', m === 'turn'); ghost.visible = false; buildPalette(); }
 export function syncUndo() { ($('tUndo') as HTMLButtonElement).disabled = !undoStack.length; ($('tRedo') as HTMLButtonElement).disabled = !redoStack.length; }
 export function undo() { if (undoOp()) sfx.turn(); }
 export function redo() { if (redoOp()) sfx.turn(); }
@@ -77,6 +77,7 @@ export function initUI() {
   $('tBuild').onclick = () => setMode('build');
   $('tErase').onclick = () => { setMode('erase'); say('اضغطي على أي قطعة لإزالتها.', 3000); };
   $('tPaint').onclick = () => { setMode('paint'); say('اختاري لونًا ثم اضغطي على أي قطعة.', 3000); };
+  $('tTurn').onclick = () => { setMode('turn'); say('اضغطي على أي قطعة لتدويرها.', 3000); };
   $('tUndo').onclick = undo; $('tRedo').onclick = redo;
   $('makkoBtn').onclick = hint;
   $('missionBtn').onclick = () => { const o = $('mission').classList.toggle('open'); $('missionBtn').setAttribute('aria-expanded', String(o)); };

@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { isCube } from './types';
+import { isBlock } from './types';
 import { N, H, K, voxels, commit, type Op } from './world';
 import { canvas, camera, ghost } from './render';
 import { pick, targetFor } from './pick';
@@ -7,7 +7,7 @@ import { sfx } from './audio';
 import { say, undo, redo } from './ui';
 
 // current tool, shared with the palette in ui.ts
-export type Mode = 'build' | 'erase' | 'paint';
+export type Mode = 'build' | 'erase' | 'paint' | 'turn';
 // color: the paint colour, or null to give a piece its own colours back
 export const tool: { mode: Mode; selected: string; color: number | null } = { mode: 'build', selected: 'rose', color: 0xe5383b };
 
@@ -18,7 +18,7 @@ export function tap(px: number, py: number) {
     if (hit.ground) return;
     const k = K(hit.cell[0], hit.cell[1], hit.cell[2]), op: Op = [{ k, a: hit.v, b: null }];
     const up = hit.cell[1] + 1 < H ? K(hit.cell[0], hit.cell[1] + 1, hit.cell[2]) : -1, uv = up >= 0 && voxels.get(up);
-    if (uv && !isCube(uv.t)) op.push({ k: up, a: uv, b: null });
+    if (uv && !isBlock(uv.t)) op.push({ k: up, a: uv, b: null });
     commit(op); sfx.remove(); return;
   }
   if (tool.mode === 'paint') {
@@ -26,6 +26,10 @@ export function tap(px: number, py: number) {
     const c = tool.color == null ? undefined : tool.color;
     if (hit.v.c === c) return;
     commit([{ k: K(hit.cell[0], hit.cell[1], hit.cell[2]), a: hit.v, b: { t: hit.v.t, r: hit.v.r, c } }]); sfx.turn(); return;
+  }
+  if (tool.mode === 'turn') {
+    if (hit.ground) return;
+    commit([{ k: K(hit.cell[0], hit.cell[1], hit.cell[2]), a: hit.v, b: { t: hit.v.t, r: ((hit.v.r || 0) + 1) % 8, c: hit.v.c } }]); sfx.turn(); return;
   }
   const selected = tool.selected;
   const tg = targetFor(hit, selected);
@@ -37,7 +41,9 @@ export function tap(px: number, py: number) {
   }
   const k = K(tg.cell[0], tg.cell[1], tg.cell[2]), old = voxels.get(k) || null;
   if (tg.act === 'turn' && old) { commit([{ k, a: old, b: { t: old.t, r: ((old.r || 0) + 1) % 8, c: old.c } }]); sfx.turn(); return; }
-  commit([{ k, a: old, b: { t: selected, r: 0 } }]); selected === 'fountain' || selected === 'water' ? sfx.splash() : sfx.place(selected);
+  // a block built against the same kind of block continues its direction (a row of roof pieces)
+  const r = !hit.ground && hit.v.t === selected ? hit.v.r : 0;
+  commit([{ k, a: old, b: { t: selected, r } }]); selected === 'fountain' || selected === 'water' ? sfx.splash() : sfx.place(selected);
 }
 
 /* ---------- camera & input ---------- */
@@ -66,7 +72,7 @@ function hover(px: number, py: number) {
   if (!hit) return;
   let c: number[] | null = null;
   if (tool.mode === 'erase') { if (!hit.ground) c = hit.cell; ghost.material.color.set(0xff4d6d); }
-  else if (tool.mode === 'paint') { if (!hit.ground) c = hit.cell; ghost.material.color.set(0xffffff); }
+  else if (tool.mode === 'paint' || tool.mode === 'turn') { if (!hit.ground) c = hit.cell; ghost.material.color.set(0xffffff); }
   else { const tg = targetFor(hit, tool.selected); if (tg && 'cell' in tg) c = tg.cell; ghost.material.color.set(0xffffff); }
   if (c) { ghost.position.set(c[0] + .5, c[1] + .5, c[2] + .5); ghost.visible = true; }
 }
