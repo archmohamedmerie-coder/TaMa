@@ -7,8 +7,12 @@ export const G = 20, OFF = (N - G) / 2;
 // r: rotation in steps of 45° (0–7). c: optional paint colour (0xRRGGBB).
 // of: set on the extra cells of a piece larger than one cell; it holds the key of the piece's anchor cell.
 // f: the floor piece lying under this one. A floor stays when furniture is put on it and shows again when the furniture goes.
-export interface Voxel { t: string; r: number; c?: number; of?: number; f?: string }
-export type Entry = [number, number, number, string, number, number?];
+// o: how far the piece stands from the middle of its cell, along x and z (-.5 to .5). Furniture and other loose
+//    pieces can stand anywhere; the cell is still theirs, so two pieces never share one.
+export interface Voxel { t: string; r: number; c?: number; of?: number; f?: string; o?: [number, number] }
+export type Entry = [number, number, number, string, number, (number | null)?, number?, number?];
+// loose pieces stand anywhere on the floor; walls, floors, openings, fences and wall-hung pieces stay on the grid
+export const isLoose = (t: string) => { const T = TYPES[t]; return !isBlock(t) && !T.flat && !T.opening && !T.door && !T.thin && t !== 'fence'; };
 export interface Edit { k: number; a: Voxel | null; b: Voxel | null }
 export type Op = Edit[];
 export type Cell = [number, number, number];
@@ -21,7 +25,8 @@ export const dirty = new Set<string>();
 // view options that are not part of the saved world
 // hidden: anchor keys of pieces not drawn or tapped right now (see inside.ts)
 // fp: looking through the girl's eyes
-export const view = { hideRoofs: false, hidden: new Set<number>(), fp: false };
+// drag: a piece being carried by the finger, drawn where the finger is (x, z: its middle; y: the level it rests on)
+export const view = { hideRoofs: false, hidden: new Set<number>(), fp: false, drag: null as { k: number; x: number; y: number; z: number } | null };
 
 // wired in main.ts so this module stays free of UI, audio and rendering
 export const hooks = { afterChange: () => {}, syncUndo: () => {}, placed: (_keys: number[]) => {} };
@@ -52,7 +57,7 @@ export function pieceKeys(ak: number): number[] {
   return cellsOf(a[0], a[1], a[2], v.t, v.r).filter(c => inB(c[0], c[1], c[2])).map(c => K(c[0], c[1], c[2]))
     .filter(k => k === ak || voxels.get(k)?.of === ak);
 }
-export interface Placement { x: number; y: number; z: number; t: string; r: number; c?: number }
+export interface Placement { x: number; y: number; z: number; t: string; r: number; c?: number; o?: [number, number] }
 // One undoable step that clears some cells and optionally puts a piece down.
 // Returns null when the new piece does not fit (off the land, or over something that is not being cleared).
 export function swapOp(removeKeys: number[], place: Placement | null): Op | null {
@@ -68,6 +73,7 @@ export function swapOp(removeKeys: number[], place: Placement | null): Op | null
       if (!e && cur && !(TYPES[cur.t].flat && cur.of == null)) return null;
       const under = cur ? cur.f || (TYPES[cur.t].flat ? cur.t : undefined) : undefined;
       const b: Voxel = { t: place.t, r: place.r, c: place.c }; if (i) b.of = ak;
+      if (place.o && (place.o[0] || place.o[1])) b.o = place.o;
       if (under && !flat) b.f = under;
       if (e) e.b = b; else m.set(k, { k, a: cur || null, b });
     }
@@ -97,6 +103,7 @@ function build(list: Entry[]): Map<number, Voxel> {
     const v: Voxel = { t: e[3], r: (((e[4] || 0) % 8) + 8) % 8 };
     if (turnStep(v.t) === 2) v.r &= 6;
     if (typeof e[5] === 'number') v.c = e[5];
+    if (typeof e[6] === 'number' && isLoose(v.t)) v.o = [Math.max(-.5, Math.min(.5, e[6])), Math.max(-.5, Math.min(.5, e[7] || 0))];
     const cells = cellsOf(e[0], e[1], e[2], v.t, v.r), ak = K(e[0], e[1], e[2]);
     const over = opening(e);
     if (cells.some(c => { if (!inB(c[0], c[1], c[2])) return true; const o = m.get(K(c[0], c[1], c[2])); return !!o && !(over && TYPES[o.t].cat === 'cube'); })) return;
@@ -138,7 +145,7 @@ export function redo(): boolean { const op = redoStack.pop(); if (!op) return fa
 // swap the whole world for another one as a single undoable step
 export function replaceWorld(list: Entry[]) {
   const next = build(list), op: Op = [];
-  voxels.forEach((v, k) => { const b = next.get(k) || null; if (!b || b.t !== v.t || b.r !== v.r || b.c !== v.c || b.of !== v.of || b.f !== v.f) op.push({ k, a: v, b }); });
+  voxels.forEach((v, k) => { const b = next.get(k) || null; if (!b || b.t !== v.t || b.r !== v.r || b.c !== v.c || b.of !== v.of || b.f !== v.f || !!b.o !== !!v.o) op.push({ k, a: v, b }); });
   next.forEach((b, k) => { if (!voxels.has(k)) op.push({ k, a: null, b }); });
   if (op.length) commit(op);
 }

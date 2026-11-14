@@ -6,7 +6,7 @@ export const state = { stars: [false, false, false], night: false, muted: false,
 let saveTimer: number | undefined;
 export function saveNow() {
   try {
-    const list: Entry[] = []; voxels.forEach((v, k) => { if (v.of != null) return; const c = unK(k); const e: Entry = [c[0], c[1], c[2], v.t, v.r || 0]; if (v.c != null) e.push(v.c); list.push(e); });
+    const list: Entry[] = []; voxels.forEach((v, k) => { if (v.of != null) return; const c = unK(k); const e: Entry = [c[0], c[1], c[2], v.t, v.r || 0]; if (v.c != null || v.o) e.push(v.c != null ? v.c : null); if (v.o) e.push(v.o[0], v.o[1]); list.push(e); });
     const floors: [number, number, number, string][] = []; voxels.forEach((v, k) => { if (v.f) { const c = unK(k); floors.push([c[0], c[1], c[2], v.f]); } });
     localStorage.setItem(SAVE_KEY, JSON.stringify({ v: 3, voxels: list, floors, state }));
   } catch (e) { /* storage unavailable */ }

@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { TYPES, isBlock } from './types';
-import { N, H, K, unK, inB, voxels, commit, cellsOf, offCell, sizeOf, type Placement, type Op, type Cell, swapOp, pieceKeys, anchorKey, turnStep, roomOp, roofOp, view, type RoofShape } from './world';
+import { N, H, K, unK, inB, voxels, commit, cellsOf, offCell, sizeOf, type Placement, type Op, type Cell, swapOp, pieceKeys, anchorKey, turnStep, roomOp, roofOp, view, dirty, isLoose, type RoofShape } from './world';
 import { canvas, camera, ghost, setRoomPreview, resize } from './render';
 import { pick, targetFor, planePoint, type Hit } from './pick';
 import { sfx } from './audio';
@@ -42,14 +42,37 @@ function openingPlacement(hit: Hit, sel: string): { keys: number[]; place: Place
 }
 function turnPiece(ak: number) {
   const v = voxels.get(ak)!, a = unK(ak);
-  const op = swapOp(pieceKeys(ak), { x: a[0], y: a[1], z: a[2], t: v.t, r: ((v.r || 0) + turnStep(v.t)) % 8, c: v.c });
+  const op = swapOp(pieceKeys(ak), { x: a[0], y: a[1], z: a[2], t: v.t, r: ((v.r || 0) + turnStep(v.t)) % 8, c: v.c, o: v.o });
   if (!op) { sfx.no(); say('لا يوجد مكان كافٍ للتدوير هنا.'); return; }
   commit(op); sfx.turn();
 }
+/* ---------- loose pieces stand anywhere, not only in the middle of a cell ---------- */
+// The spot for a loose piece whose middle should be at (fx, fz) on level y: its cell and its offset inside it.
+// Towards a neighbour that is taken (a wall, another piece) the offset stops at the middle, so nothing overlaps.
+function looseSpot(fx: number, y: number, fz: number, t: string, r: number, own: number[]): { x: number; z: number; o: [number, number] } {
+  const x = Math.floor(fx), z = Math.floor(fz);
+  let ox = fx - x - .5, oz = fz - z - .5;
+  const taken = (cx: number, cz: number) => { if (!inB(cx, y, cz)) return true; const k = K(cx, y, cz), v = voxels.get(k); return !!v && !own.includes(k) && !TYPES[v.t].flat; };
+  const cells = cellsOf(x, y, z, t, r), mine = (cx: number, cz: number) => cells.some(c => c[0] === cx && c[2] === cz);
+  for (const c of cells) {
+    if (ox > 0 && !mine(c[0] + 1, c[2]) && taken(c[0] + 1, c[2])) ox = 0;
+    if (ox < 0 && !mine(c[0] - 1, c[2]) && taken(c[0] - 1, c[2])) ox = 0;
+    if (oz > 0 && !mine(c[0], c[2] + 1) && taken(c[0], c[2] + 1)) oz = 0;
+    if (oz < 0 && !mine(c[0], c[2] - 1) && taken(c[0], c[2] - 1)) oz = 0;
+  }
+  return { x, z, o: [Math.round(ox * 100) / 100, Math.round(oz * 100) / 100] };
+}
+// the level a loose piece would rest on under this hit: the ground, the top of a block, or beside another piece
+function looseLevel(hit: Hit): number | null {
+  if (hit.ground) return 0;
+  if (isBlock(hit.v.t)) return hit.normal && hit.normal[1] === 1 && hit.cell[1] + 1 < H ? hit.cell[1] + 1 : null;
+  return unK(hit.k)[1];
+}
+
 /* ---------- moving a piece: press it, drag, and let go where it should stand ---------- */
 // Where the piece anchored at ak would land for a finger at this screen point.
 // cells: the cells it would cover there (for the preview). op: the step that moves it, or null when it does not fit.
-function moveTarget(px: number, py: number, ak: number): { cells: Cell[]; op: Op | null; same: boolean } | null {
+function moveTarget(px: number, py: number, ak: number, gx = 0, gz = 0): { cells: Cell[]; op: Op | null; same: boolean; at?: [number, number, number] } | null {
   const v = voxels.get(ak); if (!v) return null;
   const T = TYPES[v.t], a = unK(ak), own = pieceKeys(ak);
   // look through the piece itself, to what lies behind and under it
@@ -70,6 +93,17 @@ function moveTarget(px: number, py: number, ak: number): { cells: Cell[]; op: Op
     }
     return { cells, op, same };
   }
+  const level = isLoose(v.t) && !T.hang ? looseLevel(hit) : null, fp = level == null ? null : planePoint(px, py, level);
+  if (level != null && fp) {
+    // a loose piece glides with the finger and rests exactly where it is let go
+    const fx = fp[0] + gx, fz = fp[1] + gz;
+    if (fx < 0 || fx >= N || fz < 0 || fz >= N) return null;
+    const s = looseSpot(fx, level, fz, v.t, v.r, own), under = level > 0 ? voxels.get(K(s.x, level - 1, s.z)) : undefined;
+    const cells = cellsOf(s.x, level, s.z, v.t, v.r).filter(c => inB(c[0], c[1], c[2]));
+    const op = level === 0 || (under && isBlock(under.t)) ? swapOp(own, { x: s.x, y: level, z: s.z, t: v.t, r: v.r, c: v.c, o: s.o }) : null;
+    // where it fits it is drawn at the spot it would take; where it does not, right under the finger
+    return { cells, op, same: false, at: op ? [s.x + .5 + s.o[0], level, s.z + .5 + s.o[1]] : [fx, level, fz] };
+  }
   const tg = targetFor(hit, v.t);
   if (!tg || 'err' in tg) return { cells: [hit.cell as Cell], op: null, same: false };
   let [x, y, z] = tg.cell, ok = true;
@@ -84,7 +118,10 @@ function moveTarget(px: number, py: number, ak: number): { cells: Cell[]; op: Op
   return { cells, op: ok ? swapOp(own, { x, y, z, t: v.t, r: v.r, c: v.c }) : null, same };
 }
 // the preview box, stretched over the cells the piece would cover: green where it fits, red where it does not
-function showMove(m: { cells: Cell[]; op: Op | null } | null) {
+function showMove(m: { cells: Cell[]; op: Op | null; at?: [number, number, number] } | null, ak: number) {
+  // a loose piece is carried along itself; the box only shows, in red, where it cannot stand
+  const v = voxels.get(ak);
+  if (v && m && m.at) { view.drag = { k: ak, x: m.at[0], y: m.at[1], z: m.at[2] }; dirty.add(v.t); if (m.op) { ghost.visible = false; return; } }
   if (!m || !m.cells.length) { ghost.visible = false; return; }
   const lo = [1e9, 1e9, 1e9], hi = [-1e9, -1e9, -1e9];
   for (const c of m.cells) for (let i = 0; i < 3; i++) { lo[i] = Math.min(lo[i], c[i]); hi[i] = Math.max(hi[i], c[i] + 1); }
@@ -92,10 +129,11 @@ function showMove(m: { cells: Cell[]; op: Op | null } | null) {
   ghost.scale.set(hi[0] - lo[0], hi[1] - lo[1], hi[2] - lo[2]);
   ghost.material.color.set(m.op ? 0x6fe08a : 0xff4d6d); ghost.visible = true;
 }
-function endMove(ak: number, px: number, py: number, drop: boolean) {
+function endMove(ak: number, px: number, py: number, drop: boolean, gx = 0, gz = 0) {
   ghost.visible = false; ghost.scale.set(1, 1, 1);
+  if (view.drag) { const d = voxels.get(view.drag.k); if (d) dirty.add(d.t); view.drag = null; }
   if (!drop) return;
-  const m = moveTarget(px, py, ak), v = voxels.get(ak);
+  const m = moveTarget(px, py, ak, gx, gz), v = voxels.get(ak);
   if (!m || !v || m.same) return;
   if (!m.op) { sfx.no(); say('لا يوجد مكان كافٍ هنا. جرّبي مكانًا آخر.', 3000); return; }
   commit(m.op); sfx.place(v.t);
@@ -125,7 +163,7 @@ export function tap(px: number, py: number) {
     const c = tool.color == null ? undefined : tool.color;
     if (hit.v.c === c) return;
     const a = unK(hit.k);
-    commit(swapOp(pieceKeys(hit.k), { x: a[0], y: a[1], z: a[2], t: hit.v.t, r: hit.v.r, c })!); sfx.turn(); return;
+    commit(swapOp(pieceKeys(hit.k), { x: a[0], y: a[1], z: a[2], t: hit.v.t, r: hit.v.r, c, o: hit.v.o })!); sfx.turn(); return;
   }
   if (tool.mode === 'turn') { if (!hit.ground) turnPiece(hit.k); return; }
   const selected = tool.selected;
@@ -167,7 +205,12 @@ export function tap(px: number, py: number) {
     const c = offCell(tg.cell[0], tg.cell[1], tg.cell[2], o, r), q = K(c[0], c[1], c[2]);
     if (inB(c[0], c[1], c[2]) && voxels.get(q)?.t === 'floorSlab' && !gone.includes(q)) gone.push(q);
   }
-  const op = swapOp(gone, { x: tg.cell[0], y: tg.cell[1], z: tg.cell[2], t: selected, r });
+  let o: [number, number] | undefined;
+  if (isLoose(selected) && !old && looseLevel(hit) === tg.cell[1]) {
+    const p = planePoint(px, py, tg.cell[1]);
+    if (p && Math.floor(p[0]) === tg.cell[0] && Math.floor(p[1]) === tg.cell[2]) o = looseSpot(p[0], tg.cell[1], p[1], selected, r, []).o;
+  }
+  const op = swapOp(gone, { x: tg.cell[0], y: tg.cell[1], z: tg.cell[2], t: selected, r, o });
   if (!op) { sfx.no(); say('لا يوجد مكان كافٍ هنا. جرّبي مكانًا أوسع.'); return; }
   commit(op); selected === 'fountain' || selected === 'water' ? sfx.splash() : sfx.place(selected);
 }
@@ -206,7 +249,7 @@ type Gest =
   | { type: 'walk' }
   | { type: 'look'; moved: boolean }
   | { type: 'room'; x0: number; z0: number; x1: number; z1: number }
-  | { type: 'move'; k: number; moved: boolean }
+  | { type: 'move'; k: number; moved: boolean; gx: number; gz: number }
   | { type: 'done' };
 const ptrs = new Map<number, Ptr>(); let gest: Gest | null = null;
 
@@ -258,7 +301,11 @@ export function initInput() {
       else if (tool.mode === 'move' && e.button !== 2 && !e.shiftKey) {
         // with the move tool, a finger on a piece picks it up; on empty ground it turns the view as usual
         const hit = pick(e.clientX, e.clientY);
-        gest = hit && !hit.ground ? { type: 'move', k: hit.k, moved: false } : { type: 'tap', moved: false, pan: false };
+        if (hit && !hit.ground) {
+          // remember where on the piece the finger took hold, so it does not jump when the drag begins
+          const a = unK(hit.k), o = hit.v.o, p = isLoose(hit.v.t) ? planePoint(e.clientX, e.clientY, a[1]) : null;
+          gest = { type: 'move', k: hit.k, moved: false, gx: p ? a[0] + .5 + (o ? o[0] : 0) - p[0] : 0, gz: p ? a[2] + .5 + (o ? o[1] : 0) - p[1] : 0 };
+        } else gest = { type: 'tap', moved: false, pan: false };
       }
       else gest = { type: 'tap', moved: false, pan: e.button === 2 || e.shiftKey };
     }
@@ -278,7 +325,7 @@ export function initInput() {
     if (gest.type === 'move') {
       if (ptrs.size !== 1) return;
       if (!gest.moved && Math.hypot(p.x - p.sx, p.y - p.sy) > 9) gest.moved = true;
-      if (gest.moved) showMove(moveTarget(p.x, p.y, gest.k));
+      if (gest.moved) showMove(moveTarget(p.x, p.y, gest.k, gest.gx, gest.gz), gest.k);
       return;
     }
     if (gest.type === 'room') {
@@ -302,7 +349,7 @@ export function initInput() {
     if (gest && gest.type === 'walk') clearFinger();
     if (gest && gest.type === 'look' && !gest.moved && e.type === 'pointerup' && ptrs.size === 1 && performance.now() - p.t < 700) walkToScreen(e.clientX, e.clientY);
     if (gest && gest.type === 'room') { if (e.type === 'pointerup') buildRoom(gest); setRoomPreview(null); }
-    if (gest && gest.type === 'move') endMove(gest.k, e.clientX, e.clientY, gest.moved && e.type === 'pointerup' && ptrs.size === 1);
+    if (gest && gest.type === 'move') endMove(gest.k, e.clientX, e.clientY, gest.moved && e.type === 'pointerup' && ptrs.size === 1, gest.gx, gest.gz);
     const wasTap = gest && gest.type === 'tap' && !gest.moved && ptrs.size === 1 && performance.now() - p.t < 700 && e.type === 'pointerup';
     ptrs.delete(e.pointerId);
     if (ptrs.size === 0) gest = null; else if (gest) gest = { type: 'done' };

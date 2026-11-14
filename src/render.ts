@@ -113,6 +113,14 @@ function popScale(k: number) {
   const t = Math.min(1, (performance.now() - t0) / POP_MS) - 1;
   return .6 + .4 * (1 + 2.70158 * t * t * t + 1.70158 * t * t);
 }
+// where the middle of a piece is drawn: its cell, its own offset, or the finger carrying it
+const spot = { x: 0, y: 0, z: 0 };
+function place(k: number, c: number[], v: { o?: [number, number] }) {
+  const d = view.drag;
+  if (d && d.k === k) { spot.x = d.x; spot.y = d.y; spot.z = d.z; }
+  else { spot.x = c[0] + .5 + (v.o ? v.o[0] : 0); spot.y = c[1]; spot.z = c[2] + .5 + (v.o ? v.o[1] : 0); }
+  return spot;
+}
 function fill(key: string, geo: THREE.BufferGeometry, t: string, list: number[], painted: boolean, mat?: THREE.Material, floor?: boolean, fixed?: boolean) {
   let m = MESH[key];
   if (!m || m.userData.cap < list.length) {
@@ -126,7 +134,8 @@ function fill(key: string, geo: THREE.BufferGeometry, t: string, list: number[],
     const c = unK(k), v = voxels.get(k)!;
     // a floor under a piece keeps its own direction and is never hidden with the piece; a new piece grows up from the floor
     const s = floor ? 1 : view.hidden.has(k) ? 0 : popScale(k);
-    dummy.position.set(c[0] + .5, c[1] + .5 * s, c[2] + .5);
+    if (floor) dummy.position.set(c[0] + .5, c[1] + .5, c[2] + .5);
+    else { const q = place(k, c, v); dummy.position.set(q.x, q.y + .5 * s, q.z); }
     dummy.rotation.set(0, floor || fixed ? 0 : (v.r || 0) * Math.PI / 4, 0); dummy.scale.setScalar(s); dummy.updateMatrix();
     m.setMatrixAt(i, dummy.matrix);
     const j = isBlock(t) ? .95 + ((c[0] * 7 + c[1] * 13 + c[2] * 29) % 10) / 100 : 1;
@@ -191,7 +200,7 @@ for (let i = 0; i < 4; i++) { const l = new THREE.PointLight(0xffc56b, 0, 7, 1.6
 export const lightAt = new THREE.Vector3();
 export function updateLife() {
   flowerCells = []; const lamps: number[][] = [];   // x, y, z and how far above the cell the light sits
-  voxels.forEach((v, k) => { if (isFlower(v.t)) flowerCells.push(unK(k)); else if (TYPES[v.t].glow && v.of == null) lamps.push([...unK(k), TYPES[v.t].hang ? .3 : 1.2]); });
+  voxels.forEach((v, k) => { if (isFlower(v.t)) flowerCells.push(unK(k)); else if (TYPES[v.t].glow && v.of == null) { const c = unK(k); lamps.push([c[0] + (v.o ? v.o[0] : 0), c[1], c[2] + (v.o ? v.o[1] : 0), TYPES[v.t].hang ? .3 : 1.2]); } });
   // only four lights are lit: those nearest the middle of the view
   const cx = lightAt.x + N / 2, cz = lightAt.z + N / 2, far = (c: number[]) => (c[0] - cx) ** 2 + (c[2] - cz) ** 2;
   lamps.sort((a, b) => far(a) - far(b));
@@ -220,7 +229,7 @@ function animals(now: number) {
       const ph = (k * 37) % 100;
       // a slow look around, and now and then a small hop
       const hop = Math.pow(Math.max(0, Math.sin(now * .0021 + ph)), 14) * .14;
-      dummy.position.set(c[0] + .5, c[1] + .5 + hop, c[2] + .5);
+      const q = place(k, c, v); dummy.position.set(q.x, q.y + .5 + hop, q.z);
       dummy.rotation.set(0, (v.r || 0) * Math.PI / 4 + Math.sin(now * .0009 + ph) * .3, 0); dummy.scale.setScalar(1); dummy.updateMatrix();
       m.setMatrixAt(i, dummy.matrix);
     }
