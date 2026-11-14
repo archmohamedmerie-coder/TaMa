@@ -139,7 +139,10 @@ function endMove(ak: number, px: number, py: number, drop: boolean, gx = 0, gz =
   commit(m.op); sfx.place(v.t);
 }
 /* ---------- changing a piece's size: press it and drag up to grow it, down to shrink it ---------- */
-const sizeFor = (s0: number, dx: number, dy: number) => Math.round(Math.max(SIZE_MIN, Math.min(SIZE_MAX, s0 * Math.exp((dx - dy) * .006))) * 100) / 100;
+const clampSize = (s: number) => Math.round(Math.max(SIZE_MIN, Math.min(SIZE_MAX, s)) * 100) / 100;
+// one finger: up or right grows, down or left shrinks; whichever way the finger mostly goes decides
+const sizeFor = (s0: number, dx: number, dy: number) => clampSize(s0 * Math.exp((Math.abs(dy) >= Math.abs(dx) ? -dy : dx) * .007));
+function showSize(k: number, s: number) { view.sizing = { k, s }; const v = voxels.get(k); if (v) dirty.add(v.t); }
 function endSize(ak: number, s: number | null) {
   const v = voxels.get(ak);
   view.sizing = null; if (v) dirty.add(v.t);
@@ -260,6 +263,7 @@ type Gest =
   | { type: 'room'; x0: number; z0: number; x1: number; z1: number }
   | { type: 'move'; k: number; moved: boolean; gx: number; gz: number }
   | { type: 'size'; k: number; s0: number; s: number; moved: boolean }
+  | { type: 'size2'; k: number; s0: number; s: number; d0: number }
   | { type: 'done' };
 const ptrs = new Map<number, Ptr>(); let gest: Gest | null = null;
 
@@ -325,7 +329,15 @@ export function initInput() {
       }
       else gest = { type: 'tap', moved: false, pan: e.button === 2 || e.shiftKey };
     }
-    else if (ptrs.size === 2) { const a = [...ptrs.values()]; if (gest && gest.type === 'move') endMove(gest.k, 0, 0, false); if (gest && gest.type === 'size') endSize(gest.k, null); gest = { type: 'pinch', d0: Math.hypot(a[0].x - a[1].x, a[0].y - a[1].y) || 1, dist0: cam.dist, mx: (a[0].x + a[1].x) / 2, my: (a[0].y + a[1].y) / 2, a: Math.atan2(a[1].y - a[0].y, a[1].x - a[0].x) }; clearFinger(); setRoomPreview(null); }
+    else if (ptrs.size === 2) { const a = [...ptrs.values()]; if (gest && gest.type === 'move') endMove(gest.k, 0, 0, false); // with the size tool, two fingers with one of them on a piece change its size instead of the view
+      let sk: number | null = null;
+      if (tool.mode === 'size') {
+        if (gest && gest.type === 'size') sk = gest.k;
+        else for (const q of a) { const h = pick(q.x, q.y); if (h && !h.ground && isSizable(h.v.t)) { sk = h.k; break; } }
+      }
+      const d0 = Math.hypot(a[0].x - a[1].x, a[0].y - a[1].y) || 1;
+      if (sk != null) { const s0 = voxels.get(sk)!.s || 1; view.sizing = null; gest = { type: 'size2', k: sk, s0, s: s0, d0 }; }
+      else gest = { type: 'pinch', d0, dist0: cam.dist, mx: (a[0].x + a[1].x) / 2, my: (a[0].y + a[1].y) / 2, a: Math.atan2(a[1].y - a[0].y, a[1].x - a[0].x) }; clearFinger(); setRoomPreview(null); }
     ghost.visible = false;
   });
   canvas.addEventListener('pointermove', e => {
@@ -341,7 +353,12 @@ export function initInput() {
     if (gest.type === 'size') {
       if (ptrs.size !== 1) return;
       if (!gest.moved && Math.hypot(p.x - p.sx, p.y - p.sy) > 9) gest.moved = true;
-      if (gest.moved) { gest.s = sizeFor(gest.s0, p.x - p.sx, p.y - p.sy); view.sizing = { k: gest.k, s: gest.s }; const v = voxels.get(gest.k); if (v) dirty.add(v.t); }
+      if (gest.moved) { gest.s = sizeFor(gest.s0, p.x - p.sx, p.y - p.sy); showSize(gest.k, gest.s); }
+      return;
+    }
+    if (gest.type === 'size2') {
+      // two fingers on a piece: spreading them grows it, bringing them together shrinks it
+      if (ptrs.size === 2) { const a = [...ptrs.values()]; gest.s = clampSize(gest.s0 * (Math.hypot(a[0].x - a[1].x, a[0].y - a[1].y) || 1) / gest.d0); showSize(gest.k, gest.s); }
       return;
     }
     if (gest.type === 'move') {
@@ -372,6 +389,7 @@ export function initInput() {
     if (gest && gest.type === 'look' && !gest.moved && e.type === 'pointerup' && ptrs.size === 1 && performance.now() - p.t < 700) walkToScreen(e.clientX, e.clientY);
     if (gest && gest.type === 'room') { if (e.type === 'pointerup') buildRoom(gest); setRoomPreview(null); }
     if (gest && gest.type === 'size') endSize(gest.k, gest.moved && e.type === 'pointerup' && ptrs.size === 1 ? gest.s : null);
+    if (gest && gest.type === 'size2') endSize(gest.k, e.type === 'pointerup' ? gest.s : null);
     if (gest && gest.type === 'move') endMove(gest.k, e.clientX, e.clientY, gest.moved && e.type === 'pointerup' && ptrs.size === 1, gest.gx, gest.gz);
     const wasTap = gest && gest.type === 'tap' && !gest.moved && ptrs.size === 1 && performance.now() - p.t < 700 && e.type === 'pointerup';
     ptrs.delete(e.pointerId);
