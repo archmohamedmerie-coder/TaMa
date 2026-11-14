@@ -13,8 +13,8 @@ export const G = 20, OFF = (N - G) / 2;
 export interface Voxel { t: string; r: number; c?: number; of?: number; f?: string; o?: [number, number]; s?: number }
 export type Entry = [number, number, number, string, number, (number | null)?, number?, number?, number?];
 export const SIZE_MIN = .4, SIZE_MAX = 2.5;
-// pieces whose size can be changed: loose ones that stand on the floor
-export const isSizable = (t: string) => isLoose(t) && !TYPES[t].hang;
+// every piece can change size except what a building is made of: cubes and walls, windows and doors, floors, roofs and stairs
+export const isSizable = (t: string) => { const T = TYPES[t]; return T.cat !== 'cube' && !T.opening && !T.door && !T.flat && !T.roof && t !== 'floorSlab' && t !== 'stairs'; };
 // loose pieces stand anywhere on the floor; walls, floors, openings, fences and wall-hung pieces stay on the grid
 export const isLoose = (t: string) => { const T = TYPES[t]; return !isBlock(t) && !T.flat && !T.opening && !T.door && !T.thin && t !== 'fence'; };
 export interface Edit { k: number; a: Voxel | null; b: Voxel | null }

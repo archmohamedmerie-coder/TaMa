@@ -121,6 +121,21 @@ function place(k: number, c: number[], v: { o?: [number, number] }) {
   else { spot.x = c[0] + .5 + (v.o ? v.o[0] : 0); spot.y = c[1]; spot.z = c[2] + .5 + (v.o ? v.o[1] : 0); }
   return spot;
 }
+// The point a piece grows from when its size changes, in its own space: the floor under it,
+// the ceiling for a hanging light, and the wall behind it for a piece that hangs on a wall.
+const PIVOT: Record<string, number[]> = {};
+function pivot(t: string): number[] {
+  if (PIVOT[t]) return PIVOT[t];
+  const T = TYPES[t]; let p = [0, -.5, 0];
+  if (T.hang) p = [0, .5, 0];
+  else if (T.thin) { const g = GEO[t]; if (!g.boundingBox) g.computeBoundingBox(); p = [0, (g.boundingBox!.min.y + g.boundingBox!.max.y) / 2, -.5]; }
+  return PIVOT[t] = p;
+}
+// the middle of a piece's cell box when it is drawn at size s, turned by angle a
+function sized(q: { x: number; y: number; z: number }, t: string, s: number, a: number) {
+  const p = pivot(t), k = 1 - s;
+  dummy.position.set(q.x + p[2] * Math.sin(a) * k, q.y + .5 + p[1] * k, q.z + p[2] * Math.cos(a) * k);
+}
 function fill(key: string, geo: THREE.BufferGeometry, t: string, list: number[], painted: boolean, mat?: THREE.Material, floor?: boolean, fixed?: boolean) {
   let m = MESH[key];
   if (!m || m.userData.cap < list.length) {
@@ -136,7 +151,7 @@ function fill(key: string, geo: THREE.BufferGeometry, t: string, list: number[],
     const z = view.sizing && view.sizing.k === k ? view.sizing.s : v.s || 1;
     const s = floor ? 1 : view.hidden.has(k) ? 0 : popScale(k) * z;
     if (floor) dummy.position.set(c[0] + .5, c[1] + .5, c[2] + .5);
-    else { const q = place(k, c, v); dummy.position.set(q.x, q.y + .5 * s, q.z); }
+    else sized(place(k, c, v), t, s, fixed ? 0 : (v.r || 0) * Math.PI / 4);
     dummy.rotation.set(0, floor || fixed ? 0 : (v.r || 0) * Math.PI / 4, 0); dummy.scale.setScalar(s); dummy.updateMatrix();
     m.setMatrixAt(i, dummy.matrix);
     const j = isBlock(t) ? .95 + ((c[0] * 7 + c[1] * 13 + c[2] * 29) % 10) / 100 : 1;
@@ -190,7 +205,7 @@ export function showSelection(k: number | null): boolean {
   if (k == null || !v || v.of != null) { selGroup.visible = false; return false; }
   const g = GEO[v.t]; if (!g.boundingBox) g.computeBoundingBox();
   const bb = g.boundingBox!, z = view.sizing && view.sizing.k === k ? view.sizing.s : v.s || 1, q = place(k, unK(k), v);
-  selGroup.position.set(q.x, q.y + .5 * z, q.z); selGroup.rotation.y = (v.r || 0) * Math.PI / 4; selGroup.scale.setScalar(z);
+  sized(q, v.t, z, (v.r || 0) * Math.PI / 4); selGroup.position.copy(dummy.position); selGroup.rotation.y = (v.r || 0) * Math.PI / 4; selGroup.scale.setScalar(z);
   for (const c of selGroup.children) {
     c.position.set((bb.min.x + bb.max.x) / 2, (bb.min.y + bb.max.y) / 2, (bb.min.z + bb.max.z) / 2);
     c.scale.set(bb.max.x - bb.min.x + .1, bb.max.y - bb.min.y + .1, bb.max.z - bb.min.z + .1);

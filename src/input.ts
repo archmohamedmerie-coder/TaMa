@@ -157,7 +157,7 @@ export function tap(px: number, py: number) {
   if (tool.mode === 'size') {
     // the size tool: a tap chooses the piece; after that a drag anywhere changes its size
     if (hit.ground) { tool.sel = null; return; }
-    if (!isSizable(hit.v.t)) { sfx.no(); say('هذه القطعة لا يتغيّر حجمها. جرّبي الأثاث أو الحيوانات أو الأشجار.', 3500); return; }
+    if (!isSizable(hit.v.t)) { sfx.no(); say('المكعبات والنوافذ والأبواب والأرضيات والأسقف لا يتغيّر حجمها.', 3500); return; }
     tool.sel = hit.k; sfx.tick(); say('اخترتِ هذه القطعة. اسحبي إصبعكِ الآن في أي مكان: للأعلى تكبر، وللأسفل تصغر.', 5000);
     return;
   }
