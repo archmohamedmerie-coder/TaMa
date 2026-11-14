@@ -24,7 +24,7 @@ export const dirty = new Set<string>();
 export const view = { hideRoofs: false, hidden: new Set<number>(), fp: false };
 
 // wired in main.ts so this module stays free of UI, audio and rendering
-export const hooks = { afterChange: () => {}, syncUndo: () => {} };
+export const hooks = { afterChange: () => {}, syncUndo: () => {}, placed: (_keys: number[]) => {} };
 
 /* ---------- pieces larger than one cell ---------- */
 const ONE: Cell = [1, 1, 1];
@@ -123,7 +123,10 @@ export function applyOp(op: Op, fwd: boolean) {
   });
   hooks.afterChange();
 }
-export function commit(op: Op) { applyOp(op, true); undoStack.push(op); if (undoStack.length > 200) undoStack.shift(); redoStack.length = 0; hooks.syncUndo(); }
+export function commit(op: Op) {
+  // tell the renderer which pieces are new, so they can pop in
+  hooks.placed(op.filter(e => e.b && e.b.of == null && (!e.a || e.a.t !== e.b.t)).map(e => e.k));
+  applyOp(op, true); undoStack.push(op); if (undoStack.length > 200) undoStack.shift(); redoStack.length = 0; hooks.syncUndo(); }
 export function undo(): boolean { const op = undoStack.pop(); if (!op) return false; applyOp(op, false); redoStack.push(op); hooks.syncUndo(); return true; }
 export function redo(): boolean { const op = redoStack.pop(); if (!op) return false; applyOp(op, true); undoStack.push(op); hooks.syncUndo(); return true; }
 // swap the whole world for another one as a single undoable step

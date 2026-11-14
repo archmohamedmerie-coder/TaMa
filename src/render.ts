@@ -15,7 +15,8 @@ export const camera = new THREE.PerspectiveCamera(42, 1, .5, 400);
 const hemi = new THREE.HemisphereLight(0xe6f6ff, 0x8fb86a, 1.7); scene.add(hemi);
 const sun = new THREE.DirectionalLight(0xfff1d0, 2.6);
 sun.position.set(20, 26, 7); sun.castShadow = true;
-sun.shadow.mapSize.set(2048, 2048);
+const touch = !!window.matchMedia && matchMedia('(pointer:coarse)').matches;
+sun.shadow.mapSize.set(touch ? 1024 : 2048, touch ? 1024 : 2048);
 Object.assign(sun.shadow.camera, { left: -25, right: 25, top: 25, bottom: -25, near: 1, far: 90 });
 sun.shadow.bias = -0.0006; sun.shadow.normalBias = .03;
 scene.add(sun);
@@ -51,7 +52,7 @@ const clouds: THREE.Group[] = [];
 /* ---------- materials, geometry, instanced meshes ---------- */
 export const baseMat = new THREE.MeshLambertMaterial({ vertexColors: true });
 const glowMat = new THREE.MeshLambertMaterial({ vertexColors: true, emissive: 0xffb648, emissiveIntensity: 0 });
-const glassMat = new THREE.MeshLambertMaterial({ vertexColors: true, transparent: true, opacity: .4, depthWrite: false });
+const glassMat = new THREE.MeshLambertMaterial({ vertexColors: true, transparent: true, opacity: .4, depthWrite: false, emissive: 0xffd98a, emissiveIntensity: 0 });
 export const GEO: Record<string, THREE.BufferGeometry> = {};
 const MESH: Record<string, THREE.InstancedMesh> = {};
 Object.keys(TYPES).forEach(t => GEO[t] = TYPES[t].geo());
@@ -83,6 +84,35 @@ function splitPaint(t: string) {
   };
   return { paint: make(A), keep: B.p.length ? make(B) : null };
 }
+/* ---------- redrawing ---------- */
+// The cells of every kind of piece, gathered once and reused until the world next changes.
+// 'f:' + type lists the cells where that floor lies under another piece.
+let index: Map<string, number[]> | null = null;
+function byType(t: string): number[] {
+  if (!index) {
+    const m = index = new Map<string, number[]>();
+    const add = (key: string, k: number) => { const l = m.get(key); if (l) l.push(k); else m.set(key, [k]); };
+    voxels.forEach((v, k) => { if (v.of == null) add(v.t, k); if (v.f) add('f:' + v.f, k); });
+  }
+  return index.get(t) || [];
+}
+// redraw every kind of piece that changed
+export function flushDirty(dirty: Set<string>) {
+  const now = performance.now();
+  // pieces still growing in are redrawn each frame until they reach full size
+  pops.forEach((t0, k) => { const v = voxels.get(k); if (!v || now - t0 > POP_MS) pops.delete(k); if (v) dirty.add(v.t); });
+  if (!dirty.size) return;
+  index = null;
+  dirty.forEach(t => rebuild(t)); dirty.clear();
+}
+// newly placed pieces pop in: they grow from 60% to full size with a little overshoot
+const POP_MS = 220, pops = new Map<number, number>();
+export function pop(keys: number[]) { if (reduceMotion) return; const now = performance.now(); keys.forEach(k => pops.set(k, now)); }
+function popScale(k: number) {
+  const t0 = pops.get(k); if (t0 == null) return 1;
+  const t = Math.min(1, (performance.now() - t0) / POP_MS) - 1;
+  return .6 + .4 * (1 + 2.70158 * t * t * t + 1.70158 * t * t);
+}
 function fill(key: string, geo: THREE.BufferGeometry, t: string, list: number[], painted: boolean, mat?: THREE.Material, floor?: boolean, fixed?: boolean) {
   let m = MESH[key];
   if (!m || m.userData.cap < list.length) {
@@ -94,18 +124,21 @@ function fill(key: string, geo: THREE.BufferGeometry, t: string, list: number[],
   }
   list.forEach((k, i) => {
     const c = unK(k), v = voxels.get(k)!;
-    dummy.position.set(c[0] + .5, c[1] + .5, c[2] + .5); // a floor under a piece keeps its own direction and is never hidden with the piece
-    dummy.rotation.set(0, floor || fixed ? 0 : (v.r || 0) * Math.PI / 4, 0); dummy.scale.setScalar(!floor && view.hidden.has(k) ? 0 : 1); dummy.updateMatrix();
+    // a floor under a piece keeps its own direction and is never hidden with the piece; a new piece grows up from the floor
+    const s = floor ? 1 : view.hidden.has(k) ? 0 : popScale(k);
+    dummy.position.set(c[0] + .5, c[1] + .5 * s, c[2] + .5);
+    dummy.rotation.set(0, floor || fixed ? 0 : (v.r || 0) * Math.PI / 4, 0); dummy.scale.setScalar(s); dummy.updateMatrix();
     m.setMatrixAt(i, dummy.matrix);
     const j = isBlock(t) ? .95 + ((c[0] * 7 + c[1] * 13 + c[2] * 29) % 10) / 100 : 1;
     m.setColorAt(i, painted || (fixed && v.c != null) ? tint.setHex(v.c!).multiplyScalar(j) : tint.setRGB(j, j, j));
   });
   m.visible = !(view.hideRoofs && !!TYPES[t].roof);
+  m.userData.keys = list;
   m.count = list.length; m.instanceMatrix.needsUpdate = true; if (m.instanceColor) m.instanceColor.needsUpdate = true;
 }
 // show or hide every roof piece
 export function applyRoofs() {
-  for (const key in MESH) MESH[key].visible = !(view.hideRoofs && !!TYPES[key.split('#')[0]].roof);
+  for (const key in MESH) MESH[key].visible = !(view.hideRoofs && !!TYPES[key.split(/[#@]/)[0]].roof);
 }
 // Fences reach towards neighbouring fences, gates and walls, so a run needs no turning by hand.
 // One mesh per combination of sides joined; a fence on its own stays a straight piece.
@@ -113,9 +146,8 @@ const FENCE: Record<number, THREE.BufferGeometry> = {};
 function rebuildFence() {
   const groups: number[][] = []; for (let i = 0; i < 16; i++) groups.push([]);
   const joins = (x: number, y: number, z: number) => { const v = inB(x, y, z) ? voxels.get(K(x, y, z)) : undefined; return !!v && (v.t === 'fence' || v.t === 'gate' || isBlock(v.t)); };
-  voxels.forEach((v, k) => {
-    if (v.t !== 'fence') return;
-    const c = unK(k);
+  byType('fence').forEach(k => {
+    const v = voxels.get(k)!, c = unK(k);
     const mask = (joins(c[0] + 1, c[1], c[2]) ? 1 : 0) | (joins(c[0] - 1, c[1], c[2]) ? 2 : 0) | (joins(c[0], c[1], c[2] + 1) ? 4 : 0) | (joins(c[0], c[1], c[2] - 1) ? 8 : 0);
     groups[mask || (v.r & 2 ? 12 : 3)].push(k);
   });
@@ -123,11 +155,8 @@ function rebuildFence() {
 }
 function rebuildBase(t: string) {
   if (t === 'fence') { rebuildFence(); return; }
-  const plain: number[] = [], painted: number[] = [], under: number[] = [];
-  voxels.forEach((v, k) => {
-    if (v.t === t && v.of == null) (v.c == null ? plain : painted).push(k);
-    else if (v.f === t) under.push(k);       // a floor lying under another piece
-  });
+  const plain: number[] = [], painted: number[] = [], under = byType('f:' + t);   // under: a floor lying beneath another piece
+  byType(t).forEach(k => (voxels.get(k)!.c == null ? plain : painted).push(k));
   if (under.length || MESH[t + '#u']) fill(t + '#u', GEO[t], t, under, false, undefined, true);
   fill(t, GEO[t], t, plain, false);
   if (painted.length || MESH[t + '#p']) {
@@ -158,9 +187,14 @@ function newTarget(f: THREE.Group) {
 }
 const lampLights: THREE.PointLight[] = [];
 for (let i = 0; i < 4; i++) { const l = new THREE.PointLight(0xffc56b, 0, 7, 1.6); world.add(l); lampLights.push(l); }
+// the point the lamps are chosen around; main.ts keeps it at the camera target
+export const lightAt = new THREE.Vector3();
 export function updateLife() {
   flowerCells = []; const lamps: [number, number, number][] = [];
-  voxels.forEach((v, k) => { if (isFlower(v.t)) flowerCells.push(unK(k)); else if (v.t === 'lantern') lamps.push(unK(k)); });
+  voxels.forEach((v, k) => { if (isFlower(v.t)) flowerCells.push(unK(k)); else if (TYPES[v.t].glow && v.of == null) lamps.push(unK(k)); });
+  // only four lights are lit: those nearest the middle of the view
+  const cx = lightAt.x + N / 2, cz = lightAt.z + N / 2, far = (c: number[]) => (c[0] - cx) ** 2 + (c[2] - cz) ** 2;
+  lamps.sort((a, b) => far(a) - far(b));
   const want = Math.min(9, Math.floor(flowerCells.length / 2));
   while (flies.length < want) { const f = makeFly(flies.length); newTarget(f); flies.push(f); }
   while (flies.length > want) { world.remove(flies.pop()!); }
@@ -171,11 +205,30 @@ export function applyNight() {
   hemi.intensity = state.night ? .55 : 1.7; hemi.color.set(state.night ? 0x8fa0ff : 0xe6f6ff);
   sun.intensity = state.night ? .7 : 2.6; sun.color.set(state.night ? 0xa9b8ff : 0xfff1d0);
   glowMat.emissiveIntensity = state.night ? .9 : 0;
+  // windows glow warm at night
+  glassMat.emissiveIntensity = state.night ? .85 : 0; glassMat.opacity = state.night ? .75 : .4;
   updateLife();
 }
 
 // clouds drifting and butterflies flying; skipped when the user prefers reduced motion
+function animals(now: number) {
+  for (const key in MESH) {
+    const t = key.split(/[#@]/)[0], m = MESH[key]; if (!TYPES[t].alive || !m.count) continue;
+    const keys: number[] = m.userData.keys;
+    for (let i = 0; i < m.count; i++) {
+      const k = keys[i], c = unK(k), v = voxels.get(k); if (!v || view.hidden.has(k) || pops.has(k)) continue;
+      const ph = (k * 37) % 100;
+      // a slow look around, and now and then a small hop
+      const hop = Math.pow(Math.max(0, Math.sin(now * .0021 + ph)), 14) * .14;
+      dummy.position.set(c[0] + .5, c[1] + .5 + hop, c[2] + .5);
+      dummy.rotation.set(0, (v.r || 0) * Math.PI / 4 + Math.sin(now * .0009 + ph) * .3, 0); dummy.scale.setScalar(1); dummy.updateMatrix();
+      m.setMatrixAt(i, dummy.matrix);
+    }
+    m.instanceMatrix.needsUpdate = true;
+  }
+}
 export function animate(dt: number, now: number) {
+  animals(now);
   clouds.forEach(c => { c.position.x += dt * .6; if (c.position.x > 60) c.position.x = -60; });
   flies.forEach(f => {
     const u = f.userData, to = u.target.clone().sub(f.position), d = to.length();
@@ -216,7 +269,7 @@ let doors: Door[] = [];
 export function rebuild(t: string) {
   rebuildBase(t);
   const T = TYPES[t]; if (!T.glass && !T.leaves) return;
-  const all: number[] = []; voxels.forEach((v, k) => { if (v.t === t && v.of == null) all.push(k); });
+  const all = byType(t);
   if (T.glass) fill(t + '#g', xgeo(t + '#g', T.glass), t, all, false, glassMat);
   if (!T.leaves) return;
   T.leaves.forEach((l, i) => fill(t + '#l' + i, xgeo(t + '#l' + i, l.geo), t, all, false, l.glass ? glassMat : baseMat));
@@ -258,4 +311,17 @@ export function setGhostCells(keys: number[]) {
   const n = Math.min(GHOSTS, keys.length);
   for (let i = 0; i < n; i++) { const c = unK(keys[i]); dummy.position.set(c[0] + .5, c[1] + .5, c[2] + .5); dummy.rotation.set(0, 0, 0); dummy.scale.setScalar(1); dummy.updateMatrix(); wallGhost.setMatrixAt(i, dummy.matrix); }
   wallGhost.count = n; wallGhost.instanceMatrix.needsUpdate = true;
+}
+
+/* ---------- quality that adapts to the device ---------- */
+// Called when frames are running slow. First step: fewer pixels. Second step: no shadows. Returns false when nothing is left to give up.
+let qualityStep = 0;
+export function lowerQuality(): boolean {
+  if (qualityStep === 0) { renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.25)); resize(); }
+  else if (qualityStep === 1) {
+    renderer.shadowMap.enabled = false; sun.castShadow = false;
+    scene.traverse(o => { const m = (o as THREE.Mesh).material as THREE.Material | undefined; if (m) m.needsUpdate = true; });
+  } else return false;
+  qualityStep++;
+  return true;
 }

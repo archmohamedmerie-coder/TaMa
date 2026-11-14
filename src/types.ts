@@ -19,6 +19,7 @@ export interface PieceType {
   // moving parts: a leaf swings around a hinge (x, z in the piece's own space); with top set it rolls up instead
   leaves?: { geo: () => THREE.BufferGeometry; glass?: boolean; hinge?: [number, number]; dir?: number; top?: number }[];
   hidden?: boolean;  // not offered in the palette
+  alive?: boolean;   // an animal: it shuffles and hops where it stands
   roof?: boolean; // hidden while the player looks inside the houses
   solid?: boolean; // fills its cell like a cube: other pieces can be built on and beside it
   keep?: number[]; // part colours that paint does not cover
@@ -375,6 +376,7 @@ export function fenceGeo(mask: number): Geo {
   if (mask & 1) arm(1, 0); if (mask & 2) arm(-1, 0); if (mask & 4) arm(0, 1); if (mask & 8) arm(0, -1);
   return M(parts);
 }
+for (const t of ['bunny', 'cow', 'sheep', 'chicken', 'duck', 'horse', 'cat', 'dog']) TYPES[t].alive = true;
 export const CATS: [Cat, string][] = [['flower', 'زهور'], ['cube', 'مكعبات'], ['open', 'فتحات'], ['house', 'بيت'], ['furniture', 'أثاث'], ['bath', 'حمّام'], ['decor', 'حديقة'], ['animal', 'مزرعة'], ['street', 'شارع']];
 for (const t in TYPES) if (TYPES[t].cat === 'flower') TYPES[t].keep = [STEM, LEAF, 0x6b4423];
 TYPES.tree.keep = TYPES.blossom.keep = [0x8a5a33];
