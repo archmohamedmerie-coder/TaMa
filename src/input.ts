@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { TYPES, isBlock } from './types';
 import { N, H, K, unK, inB, voxels, commit, cellsOf, offCell, sizeOf, type Placement, type Op, type Cell, swapOp, pieceKeys, anchorKey, turnStep, roomOp, roofOp, view, dirty, isLoose, isSizable, SIZE_MIN, SIZE_MAX, type RoofShape } from './world';
-import { canvas, camera, ghost, setRoomPreview, resize } from './render';
+import { canvas, camera, ghost, setRoomPreview, resize, showSelection } from './render';
 import { pick, targetFor, planePoint, type Hit } from './pick';
 import { sfx } from './audio';
 import { say, undo, redo } from './ui';
@@ -14,8 +14,9 @@ export const STOREY = 3;
 // color: the paint colour, or null to give a piece its own colours back
 // room: the wall material and number of storeys used by the room tool
 // roof: the shape and colour used by the roof tool (null colour = red tiles)
-export const tool: { mode: Mode; selected: string; color: number | null; room: { wall: string; storeys: number }; roof: { shape: RoofShape; color: number | null } } =
-  { mode: 'build', selected: 'rose', color: 0xe5383b, room: { wall: 'white', storeys: 1 }, roof: { shape: 'gable', color: null } };
+// sel: the piece chosen with the size tool (its anchor key)
+export const tool: { sel: number | null; mode: Mode; selected: string; color: number | null; room: { wall: string; storeys: number }; roof: { shape: RoofShape; color: number | null } } =
+  { sel: null, mode: 'build', selected: 'rose', color: 0xe5383b, room: { wall: 'white', storeys: 1 }, roof: { shape: 'gable', color: null } };
 
 // Where a window or door goes when a wall is tapped: in the wall, facing out of the tapped side,
 // in the wall's own colour. Returns null when it does not fit there.
@@ -153,7 +154,14 @@ function endSize(ak: number, s: number | null) {
 export function tap(px: number, py: number) {
   const hit = pick(px, py);
   if (!hit) return;
-  if (tool.mode === 'walk' || tool.mode === 'room' || tool.mode === 'move' || tool.mode === 'size') return;
+  if (tool.mode === 'size') {
+    // the size tool: a tap chooses the piece; after that a drag anywhere changes its size
+    if (hit.ground) { tool.sel = null; return; }
+    if (!isSizable(hit.v.t)) { sfx.no(); say('هذه القطعة لا يتغيّر حجمها. جرّبي الأثاث أو الحيوانات أو الأشجار.', 3500); return; }
+    tool.sel = hit.k; sfx.tick(); say('اخترتِ هذه القطعة. اسحبي إصبعكِ الآن في أي مكان: للأعلى تكبر، وللأسفل تصغر.', 5000);
+    return;
+  }
+  if (tool.mode === 'walk' || tool.mode === 'room' || tool.mode === 'move') return;
   if (tool.mode === 'roof') {
     const op = hit.ground ? null : roofOp(hit.cell[0], hit.cell[1], hit.cell[2], tool.roof.shape, tool.roof.color == null ? undefined : tool.roof.color);
     if (!op) { sfx.no(); say(hit.ground ? 'اضغطي على جدار البيت لأضع له سقفًا.' : tool.roof.shape === 'none' ? 'لا يوجد سقف هنا.' : 'لا يوجد مكان لسقف فوق هذا الجدار.'); return; }
@@ -236,6 +244,9 @@ export function setFP(on: boolean) {
   resize();
 }
 export function placeCamera() {
+  // the frame around the chosen piece follows it; it goes when the piece does or when another tool is taken
+  if (tool.mode !== 'size') tool.sel = null;
+  if (!showSelection(tool.sel)) tool.sel = null;
   if (view.fp) {
     const e = heroEye(), x = e.x - N / 2, z = e.z - N / 2;
     const cp = Math.cos(e.p);
@@ -322,18 +333,18 @@ export function initInput() {
         } else gest = { type: 'tap', moved: false, pan: false };
       }
       else if (tool.mode === 'size' && e.button !== 2 && !e.shiftKey) {
-        // with the size tool, a finger on a piece takes hold of its size; on empty ground it turns the view as usual
-        const hit = pick(e.clientX, e.clientY);
-        if (hit && !hit.ground && isSizable(hit.v.t)) { const s0 = hit.v.s || 1; gest = { type: 'size', k: hit.k, s0, s: s0, moved: false }; }
-        else { if (hit && !hit.ground) say('هذه القطعة لا يتغيّر حجمها. جرّبي الأثاث أو الحيوانات أو الأشجار.', 3500); gest = { type: 'tap', moved: false, pan: false }; }
+        // with the size tool and a piece chosen, a drag anywhere on the screen changes its size;
+        // with none chosen the finger turns the view, and a tap chooses a piece
+        const sv = tool.sel == null ? undefined : voxels.get(tool.sel);
+        if (sv && tool.sel != null) { const s0 = sv.s || 1; gest = { type: 'size', k: tool.sel, s0, s: s0, moved: false }; }
+        else gest = { type: 'tap', moved: false, pan: false };
       }
       else gest = { type: 'tap', moved: false, pan: e.button === 2 || e.shiftKey };
     }
     else if (ptrs.size === 2) { const a = [...ptrs.values()]; if (gest && gest.type === 'move') endMove(gest.k, 0, 0, false); // with the size tool, two fingers with one of them on a piece change its size instead of the view
       let sk: number | null = null;
       if (tool.mode === 'size') {
-        if (gest && gest.type === 'size') sk = gest.k;
-        else for (const q of a) { const h = pick(q.x, q.y); if (h && !h.ground && isSizable(h.v.t)) { sk = h.k; break; } }
+        if (tool.sel != null && voxels.get(tool.sel)) sk = tool.sel;
       }
       const d0 = Math.hypot(a[0].x - a[1].x, a[0].y - a[1].y) || 1;
       if (sk != null) { const s0 = voxels.get(sk)!.s || 1; view.sizing = null; gest = { type: 'size2', k: sk, s0, s: s0, d0 }; }
@@ -391,7 +402,7 @@ export function initInput() {
     if (gest && gest.type === 'size') endSize(gest.k, gest.moved && e.type === 'pointerup' && ptrs.size === 1 ? gest.s : null);
     if (gest && gest.type === 'size2') endSize(gest.k, e.type === 'pointerup' ? gest.s : null);
     if (gest && gest.type === 'move') endMove(gest.k, e.clientX, e.clientY, gest.moved && e.type === 'pointerup' && ptrs.size === 1, gest.gx, gest.gz);
-    const wasTap = gest && gest.type === 'tap' && !gest.moved && ptrs.size === 1 && performance.now() - p.t < 700 && e.type === 'pointerup';
+    const wasTap = gest && (gest.type === 'tap' || gest.type === 'size') && !gest.moved && ptrs.size === 1 && performance.now() - p.t < 700 && e.type === 'pointerup';
     ptrs.delete(e.pointerId);
     if (ptrs.size === 0) gest = null; else if (gest) gest = { type: 'done' };
     if (wasTap && e.button !== 2) tap(e.clientX, e.clientY);

@@ -176,6 +176,27 @@ function rebuildBase(t: string) {
   }
 }
 
+/* ---------- the chosen piece: a yellow frame around it, so it stands apart from its neighbours ---------- */
+const selGroup = new THREE.Group();
+{
+  const box = new THREE.BoxGeometry(1, 1, 1);
+  selGroup.add(new THREE.Mesh(box, new THREE.MeshBasicMaterial({ color: 0xffc22e, transparent: true, opacity: .2, depthWrite: false })),
+    new THREE.LineSegments(new THREE.EdgesGeometry(box), new THREE.LineBasicMaterial({ color: 0xff9a1e })));
+  selGroup.visible = false; world.add(selGroup);
+}
+// frame the piece anchored at k (or nothing); returns false when there is no such piece
+export function showSelection(k: number | null): boolean {
+  const v = k == null ? undefined : voxels.get(k);
+  if (k == null || !v || v.of != null) { selGroup.visible = false; return false; }
+  const g = GEO[v.t]; if (!g.boundingBox) g.computeBoundingBox();
+  const bb = g.boundingBox!, z = view.sizing && view.sizing.k === k ? view.sizing.s : v.s || 1, q = place(k, unK(k), v);
+  selGroup.position.set(q.x, q.y + .5 * z, q.z); selGroup.rotation.y = (v.r || 0) * Math.PI / 4; selGroup.scale.setScalar(z);
+  for (const c of selGroup.children) {
+    c.position.set((bb.min.x + bb.max.x) / 2, (bb.min.y + bb.max.y) / 2, (bb.min.z + bb.max.z) / 2);
+    c.scale.set(bb.max.x - bb.min.x + .1, bb.max.y - bb.min.y + .1, bb.max.z - bb.min.z + .1);
+  }
+  selGroup.visible = true; return true;
+}
 // cell highlight under the pointer
 export const ghost = new THREE.Mesh(new THREE.BoxGeometry(1.03, 1.03, 1.03), new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: .38, depthWrite: false }));
 ghost.visible = false; world.add(ghost);
