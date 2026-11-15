@@ -131,7 +131,7 @@ export function waveFlags(list: Scenery[]) { sceneries.length = 0; sceneries.pus
 
 /* ---------- a little sailing boat, facing +z, its sail in the island's colour ---------- */
 const HULL = 0x4fa8e0, TRIM = 0xffffff;
-function boatGeo(sail: number) {
+export function boatGeo(sail: number) {
   const p: THREE.BufferGeometry[] = [];
   p.push(box(1.0, .2, 2.6, TRIM, 0, -.3, 0));                                             // bottom
   p.push(box(.14, .55, 2.8, HULL, .62, -.25, 0), box(.14, .55, 2.8, HULL, -.62, -.25, 0)); // sides

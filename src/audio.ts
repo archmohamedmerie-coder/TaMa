@@ -26,6 +26,8 @@ export const sfx = {
   turn: () => beep(700, .06, 1.2, 'sine', .07),
   tick: () => beep(980, .035, 1, 'sine', .04),
   no: () => beep(200, .12, .9, 'triangle', .09),
+  // a boat horn: two soft low notes; quieter when the boat is further away
+  horn: (vol = 1) => { beep(392, .32, .98, 'triangle', .16 * vol); setTimeout(() => beep(523, .45, .98, 'triangle', .14 * vol), 260); },
   splash: () => { beep(600, .25, 2.2, 'sine', .05); setTimeout(() => beep(900, .2, 1.8, 'sine', .04), 80); },
   star: () => { [660, 880, 1175, 1568].forEach((f, i) => setTimeout(() => beep(f, .26, 1, 'triangle', .11), i * 120)); },
   win: () => { [523, 659, 784, 1047, 784, 1047, 1319].forEach((f, i) => setTimeout(() => beep(f, .3, 1, 'triangle', .11), i * 150)); }

@@ -205,3 +205,10 @@ body.fp .sail{bottom:28px}
 .btn:disabled{opacity:.5}
 #familyBtn{position:relative}
 #familyBtn.dot::after{content:'';position:absolute;top:2px;inset-inline-end:2px;width:12px;height:12px;border-radius:50%;background:#e2477f;border:2px solid #fff}
+
+/* the horn, while sailing: beside the middle of the screen, above the palette */
+.horn{position:absolute;inset-inline-end:16px;bottom:calc(var(--pal,150px) + 24px);z-index:5;width:76px;height:76px;border-radius:50%;border:3px solid #fff;background:#ffc22e;color:var(--ink);box-shadow:var(--shadow);display:grid;place-items:center;align-content:center;gap:0;font:800 14px/1 'Baloo Bhaijaan 2',system-ui,sans-serif;cursor:pointer}
+.horn[hidden]{display:none}
+.horn svg{width:34px;height:34px;fill:none;stroke:var(--ink);stroke-width:2;stroke-linejoin:round;stroke-linecap:round}
+.horn:active{transform:scale(.92)}
+body.fp .horn{bottom:28px}

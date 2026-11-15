@@ -218,3 +218,7 @@ function sail(dt: number, now: number) {
 // with friends nearby the view may wander over to their islands too
 export const roam = () => sailing ? 400 : N / 2 + 12 + Math.max(0, ...isles.map(o => Math.max(Math.abs(o.x), Math.abs(o.z))));
 export const isSailing = () => sailing;
+
+// a copy of the girl for a friend sailing her own boat, and how high above her feet the model's middle sits
+export const girlModel = () => { const g = hero.clone(true); g.rotation.set(0, 0, 0); g.visible = true; return g; };
+export const GIRL_LIFT = .5 * S;

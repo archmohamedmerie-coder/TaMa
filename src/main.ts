@@ -12,6 +12,7 @@ import { saveHooks } from './save';
 import { fam, famHooks, connect, shareIsland } from './net';
 import { syncIslands, islandArrived } from './islands';
 import { initFamily, familyChanged } from './family';
+import { initBoats, updateBoats, liveNews, remoteBoats } from './boats';
 import { initHero, settleHero, updateHero, heroCell, setFinger, clearFinger } from './hero';
 
 hooks.afterChange = () => { checkGoals(false); updateLife(); settleHero(); refreshInside(); save(); };
@@ -27,6 +28,8 @@ initFamily();
 saveHooks.saved = shareIsland;
 famHooks.state = () => { syncIslands(); familyChanged(); };
 famHooks.snap = islandArrived;
+famHooks.live = liveNews;
+initBoats();
 syncIslands();
 connect();
 
@@ -47,6 +50,7 @@ function tick(now: number) {
   lightAt.copy(cam.target);
   updateSea(dt, now, cam.target.x + N / 2, cam.target.z + N / 2);
   updateHero(dt, now);
+  updateBoats(dt, now, cam.target.x + N / 2, cam.target.z + N / 2);
   { const h = heroCell(); updateDoors(dt, h[0], h[1], h[2]); updateInside(h[0], h[1], h[2], cam.theta, view.fp ? 'fp' : tool.mode); }
   placeCamera();
   if (!reduceMotion) animate(dt, now);
@@ -63,4 +67,4 @@ function frame(now: number) {
   tick(now); requestAnimationFrame(frame);
 }
 requestAnimationFrame(frame);
-(window as any).__garden = { tap, pick, voxels, state, cam, stats, heroCell, tick, fam, setFinger, clearFinger, camera, view };
+(window as any).__garden = { tap, pick, voxels, state, cam, stats, heroCell, tick, fam, remoteBoats, setFinger, clearFinger, camera, view };

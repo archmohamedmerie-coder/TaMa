@@ -17,14 +17,14 @@ const isles = new Map<string, Isle>();
 const snaps = new Map<string, any>();      // the latest copy of each friend's island
 
 /* ---------- a name floating above the flag ---------- */
-function nameSprite(): THREE.Sprite {
+export function nameSprite(): THREE.Sprite {
   const cv = document.createElement('canvas'); cv.width = 512; cv.height = 128;
   const tex = new THREE.CanvasTexture(cv); tex.colorSpace = THREE.SRGBColorSpace;
   const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, depthTest: false, transparent: true }));
   s.scale.set(6.4, 1.6, 1); s.position.set(N / 2 - 1.6, 5.8, N + 1.2); s.renderOrder = 5; s.userData.cv = cv;
   return s;
 }
-function writeName(s: THREE.Sprite, text: string, color: number, away: boolean) {
+export function writeName(s: THREE.Sprite, text: string, color: number, away: boolean) {
   const cv = s.userData.cv as HTMLCanvasElement, c = cv.getContext('2d')!;
   c.clearRect(0, 0, 512, 128);
   c.font = '800 62px "Baloo Bhaijaan 2", system-ui, sans-serif';
@@ -88,3 +88,14 @@ function disposeAll(o: THREE.Object3D) {
     if ((x as THREE.Sprite).isSprite) { const s = x as THREE.Sprite; s.material.map?.dispose(); s.material.dispose(); }
   });
 }
+
+// where a family member's garden starts, seen from this child's garden (null if not in the family)
+export function offsetOf(id: string): [number, number] | null {
+  const meSlot = fam.members.find(m => m.id === fam.me)?.slot ?? 0, m = fam.members.find(x => x.id === id);
+  if (!m || m.slot == null || !SLOT[m.slot]) return null;
+  return [SLOT[m.slot][0] - SLOT[meSlot][0], SLOT[m.slot][1] - SLOT[meSlot][1]];
+}
+// where this child's garden starts in the archipelago, so positions can be shared in one frame for everyone
+export const myPlace = (): [number, number] => { const s = SLOT[fam.members.find(m => m.id === fam.me)?.slot ?? 0] || SLOT[0]; return [s[0], s[1]]; };
+// a friend's boat is shown at her pier, or hidden there while she sails it
+export function setMoored(id: string, shown: boolean) { const i = isles.get(id); if (i) i.scenery.boat.visible = shown; }

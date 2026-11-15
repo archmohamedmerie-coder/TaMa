@@ -36,6 +36,7 @@ export const famHooks = {
   state: () => {},                            // membership or presence changed
   snap: (_id: string, _data: any) => {},      // a friend's island arrived or changed
   gone: (_why: string) => {},                 // this device is no longer in a family
+  live: (_m: any) => {},                      // a friend's boat moved, docked or sounded its horn
 };
 
 /* ---------- joining ---------- */
@@ -95,6 +96,7 @@ export function connect() {
       if (fam.status === 'member' && (was !== 'member' || !sentOnce)) { sentOnce = true; saveNow(); }
     }
     else if (m.t === 'snap') { try { famHooks.snap(m.id, JSON.parse(m.d)); } catch { /* a bad copy is ignored */ } }
+    else if (m.t === 'pos' || m.t === 'horn') famHooks.live(m);
     else if (m.t === 'gone') forget(m.why);
   };
   w.onclose = () => {
@@ -106,6 +108,8 @@ export function connect() {
     retryTimer = window.setTimeout(connect, retry); retry = Math.min(30000, retry * 1.6);
   };
 }
+// passing news that is not kept: where the boat is, the horn
+export function sendLive(m: unknown) { if (fam.status === 'member') send(m); }
 function send(m: unknown) { if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(m)); }
 // come back quickly when the device wakes or the network returns
 window.addEventListener('online', () => { retry = 2000; if (!ws) connect(); });

@@ -143,6 +143,13 @@ export class Archipelago extends DurableObject<Env> {
       const out = JSON.stringify({ t: 'snap', id: me.id, d: msg.d });
       for (const o of this.memberSockets(ms)) if (o !== ws) o.send(out);
     }
+    // where a boat is and the sound of its horn: passed on to the others as they come, never stored
+    else if ((msg.t === 'pos' || msg.t === 'horn') && me.status === 'member') {
+      const num = (v: unknown) => { const n = Number(v); return Number.isFinite(n) && Math.abs(n) < 1e4 ? Math.round(n * 100) / 100 : 0; };
+      const out = JSON.stringify(msg.t === 'horn' ? { t: 'horn', id: me.id }
+        : msg.docked ? { t: 'pos', id: me.id, docked: true } : { t: 'pos', id: me.id, x: num(msg.x), z: num(msg.z), a: num(msg.a) });
+      for (const o of this.memberSockets(ms)) if (o !== ws) { try { o.send(out); } catch { /* closed */ } }
+    }
     else if (msg.t === 'approve' && admin && ms[msg.id]?.status === 'pending') {
       const used = new Set(Object.values(ms).map(m => m.slot));
       let slot = 0; while (used.has(slot)) slot++;
