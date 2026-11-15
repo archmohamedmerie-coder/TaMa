@@ -18,6 +18,7 @@
       <span class="title">الحديقة السحرية</span>
     </button>
     <div class="actions">
+      <button class="round" id="speakerBtn" hidden aria-label="سمّاعة أصوات الصديقات" aria-pressed="true"><svg viewBox="0 0 24 24"><path d="M4 9.5v5h3.5L12 18.5v-13L7.5 9.5z"/><path d="M15.5 9a4.5 4.5 0 010 6M18 6.5a8 8 0 010 11"/><path class="x" d="M16 9l5 6M21 9l-5 6"/></svg></button>
       <button class="round" id="visitBtn" hidden aria-label="زوار جزيرتكِ"><svg viewBox="0 0 24 24"><path d="M12 3.5a5.5 5.5 0 015.5 5.5v4.5l2 3H4.5l2-3V9A5.5 5.5 0 0112 3.5z"/><path d="M10 19.5a2 2 0 004 0"/></svg></button>
       <button class="round" id="familyBtn" aria-label="أرخبيل العائلة، للأهل"><svg viewBox="0 0 24 24"><path d="M2 19c2 0 2-1.5 4-1.5s2 1.5 4 1.5 2-1.5 4-1.5 2 1.5 4 1.5 2-1.5 4-1.5"/><path d="M5 15.5c1-3 4-4.5 7-4.5s6 1.5 7 4.5"/><path d="M12 11V3l5 2.5-5 2.5"/></svg></button>
       <button class="round" id="nightBtn" aria-label="نهار أو ليل"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="4.200"/><path d="M12 2.500v2.500M12 19v2.500M2.500 12H5M19 12h2.500M5.300 5.300l1.800 1.800M16.900 16.900l1.800 1.800M5.300 18.700l1.800-1.800M16.900 7.100l1.800-1.800"/></svg></button>
@@ -55,6 +56,8 @@
     <div class="bubble" id="bubble" role="status"></div>
   </div>
 
+  <div class="talkers" id="talkers" hidden aria-live="polite"></div>
+  <button class="mic" id="micBtn" hidden aria-label="اضغطي وتكلمي"><svg viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5.5 11a6.5 6.5 0 0013 0M12 17.5V21M8.5 21h7"/></svg><span class="lock"><svg viewBox="0 0 24 24"><rect x="6" y="11" width="12" height="9" rx="2"/><path d="M9 11V8a3 3 0 016 0v3"/></svg></span></button>
   <button class="horn" id="hornBtn" hidden aria-label="بوق القارب"><svg viewBox="0 0 24 24"><path d="M3 10v4h3l6 4V6L6 10z"/><path d="M15 9.5c1.2 1.4 1.2 3.6 0 5M18 7c2.4 2.8 2.4 7.2 0 10"/></svg><span>بوق</span></button>
   <button class="sail" id="sailBtn" hidden><svg viewBox="0 0 24 24"><path d="M12 3v13M12 4l6 10h-6M12 6l-5 8h5"/><path d="M3 17h18l-2.5 3.5h-13z"/></svg><span>أبحري بالقارب</span></button>
 

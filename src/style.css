@@ -227,3 +227,47 @@ body.fp .horn{bottom:28px}
 .card .seg{margin:10px 0 4px}
 /* visiting a friend: only walking; her own building tools are put away */
 body.visiting .tools .tool:not(#tWalk),body.visiting .palette,body.visiting #resetBtn,body.visiting #familyBtn{display:none}
+
+/* voices: the speaker in the top row, the talk button above the palette, who is speaking under the title */
+#speakerBtn .x{display:none}
+#speakerBtn.off .x{display:inline}
+#speakerBtn.off path:not(.x):nth-child(2){display:none}
+.mic{position:absolute;inset-inline-end:16px;bottom:calc(var(--pal,150px) + 24px);z-index:5;width:84px;height:84px;border-radius:50%;border:4px solid #fff;background:#8f6bff;box-shadow:var(--shadow);display:grid;place-items:center;touch-action:none;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none;cursor:pointer}
+.mic[hidden]{display:none}
+.mic>svg{width:40px;height:40px;fill:none;stroke:#fff;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.mic.opening{opacity:.75}
+.mic.on{background:#e2477f;transform:scale(1.08);box-shadow:0 0 0 8px rgba(226,71,127,.25),var(--shadow)}
+.mic .lock{position:absolute;top:-34px;width:30px;height:30px;border-radius:50%;background:#fff;display:none;place-items:center;box-shadow:var(--shadow)}
+.mic .lock svg{width:18px;height:18px;fill:none;stroke:#8f6bff;stroke-width:2.2}
+.mic.on .lock,.mic.locked .lock{display:grid}
+.mic.locked .lock svg{stroke:#e2477f}
+.talkers{position:absolute;top:70px;inset-inline-start:12px;z-index:5;display:flex;flex-direction:column;gap:6px;max-width:min(320px,calc(100% - 24px))}
+.talkers[hidden]{display:none}
+.talker{display:flex;align-items:center;gap:8px;background:var(--paper);border:3px solid #fff;border-radius:16px;box-shadow:var(--shadow);padding:6px 10px;font-weight:800;font-size:16px}
+.talker .wave{width:14px;height:14px;border-radius:50%;flex:none;animation:talkPulse 1s ease-in-out infinite}
+.talker.quiet{opacity:.7}
+.talker.quiet .wave{animation:none}
+@keyframes talkPulse{0%,100%{transform:scale(.8)}50%{transform:scale(1.25)}}
+@media (prefers-reduced-motion:reduce){.talker .wave{animation:none}}
+
+/* with the family's buttons (bell, speaker, family) the top row can hold eight round buttons:
+   on a phone they wrap onto a second row instead of running off the screen */
+@media (max-width:640px){
+  .actions{flex-wrap:wrap;justify-content:flex-end;max-width:calc(100vw - 150px)}
+  /* the tools column starts below the top row, however many rows it has */
+  .tools{top:calc(var(--toph,40px) + 16px)}
+}
+
+/* the talk button and the horn stand on the right, above Makko, where the tools column does not reach */
+.mic{inset-inline-end:auto;inset-inline-start:12px;bottom:calc(var(--pal,150px) + 96px)}
+.horn{inset-inline-end:auto;inset-inline-start:16px;bottom:calc(var(--pal,150px) + 96px)}
+body.voices .horn{bottom:calc(var(--pal,150px) + 228px)}
+@media (max-width:640px){
+  .mic{width:72px;height:72px;bottom:calc(var(--pal,150px) + 86px)}
+  .mic>svg{width:34px;height:34px}
+  .horn{width:66px;height:66px;bottom:calc(var(--pal,150px) + 86px)}
+  body.voices .horn{bottom:calc(var(--pal,150px) + 204px)}
+}
+body.fp .mic{bottom:96px}
+body.fp .horn{bottom:96px}
+body.fp.voices .horn{bottom:216px}

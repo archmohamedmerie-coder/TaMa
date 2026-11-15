@@ -9,6 +9,9 @@ import { DurableObject } from 'cloudflare:workers';
 export interface Env {
   ARCH: DurableObjectNamespace<Archipelago>;
   LIMIT: DurableObjectNamespace<Limiter>;
+  // optional: a Cloudflare TURN key, for voices that cannot reach each other directly (set with wrangler secret put)
+  TURN_KEY_ID?: string;
+  TURN_KEY_TOKEN?: string;
 }
 
 const MAX_ISLANDS = 4;
@@ -152,6 +155,22 @@ export class Archipelago extends DurableObject<Env> {
       for (const o of this.memberSockets(ms)) if (o !== ws) { try { o.send(out); } catch { /* closed */ } }
     }
     /* ---------- visits: the bell at the pier, the answer, the sign, goodbye ---------- */
+    /* ---------- voices ----------
+       The sound itself goes from device to device (WebRTC); the server only introduces them (rtc),
+       says who is speaking (talk) and who is listening (voice), and hands out the ways to connect (ice). */
+    else if (msg.t === 'rtc' && me.status === 'member' && ms[msg.to]?.status === 'member' && msg.to !== me.id) {
+      const d = JSON.stringify(msg.d ?? null);
+      if (d.length <= 16000) this.tell(msg.to, { t: 'rtc', from: me.id, d: JSON.parse(d) });
+    }
+    else if (msg.t === 'talk' && me.status === 'member') {
+      const out = JSON.stringify({ t: 'talk', id: me.id, on: !!msg.on });
+      for (const o of this.memberSockets(ms)) if (o !== ws) { try { o.send(out); } catch { /* closed */ } }
+    }
+    else if (msg.t === 'voice' && me.status === 'member') {
+      await this.ctx.storage.put('voice:' + me.id, { on: !!msg.on, listen: !!msg.listen });
+      await this.broadcast();
+    }
+    else if (msg.t === 'ice' && me.status === 'member') ws.send(JSON.stringify({ t: 'ice', servers: await this.iceServers() }));
     else if (me.status === 'member' && ['knock', 'unknock', 'answer', 'invite', 'door', 'bye', 'endVisit'].includes(msg.t)) await this.visits(ws, ms, me, msg);
     else if (msg.t === 'approve' && admin && ms[msg.id]?.status === 'pending') {
       const used = new Set(Object.values(ms).map(m => m.slot));
@@ -175,6 +194,19 @@ export class Archipelago extends DurableObject<Env> {
     const { id } = (ws.deserializeAttachment() || {}) as { id?: string };
     if (id && !this.ctx.getWebSockets(id).some(w => w !== ws && w.readyState === WebSocket.OPEN)) await this.endAll(id, 'away', ws);
     await this.broadcast(ws);
+  }
+  // a free public meeting point for direct connections, and a relay too when the family has a TURN key
+  private async iceServers(): Promise<unknown[]> {
+    const stun = [{ urls: 'stun:stun.cloudflare.com:3478' }];
+    if (!this.env.TURN_KEY_ID || !this.env.TURN_KEY_TOKEN) return stun;
+    try {
+      const r = await fetch('https://rtc.live.cloudflare.com/v1/turn/keys/' + this.env.TURN_KEY_ID + '/credentials/generate-ice-servers', {
+        method: 'POST', headers: { Authorization: 'Bearer ' + this.env.TURN_KEY_TOKEN, 'Content-Type': 'application/json' }, body: JSON.stringify({ ttl: 86400 }) });
+      const j = await r.json<{ iceServers?: { urls: string | string[]; username?: string; credential?: string }[] }>();
+      if (!j.iceServers) return stun;
+      // browsers block port 53, so that address would only make them wait
+      return j.iceServers.map(sv => ({ ...sv, urls: (Array.isArray(sv.urls) ? sv.urls : [sv.urls]).filter(u => !/:53(\?|$)/.test(u)) }));
+    } catch { return stun; }
   }
   private tell(id: string, m: unknown, except?: WebSocket) {
     const s = JSON.stringify(m);
@@ -251,7 +283,7 @@ export class Archipelago extends DurableObject<Env> {
   }
 
   private async drop(ms: Record<string, Member>, id: string, why: string) {
-    await this.endAll(id, 'away'); await this.ctx.storage.delete('door:' + id);
+    await this.endAll(id, 'away'); await this.ctx.storage.delete('door:' + id); await this.ctx.storage.delete('voice:' + id);
     delete ms[id];
     await this.ctx.storage.put('members', ms); await this.ctx.storage.delete('snap:' + id);
     for (const o of this.ctx.getWebSockets(id)) { try { o.send(JSON.stringify({ t: 'gone', why })); o.close(4000, 'gone'); } catch { /* closed */ } }
@@ -278,7 +310,9 @@ export class Archipelago extends DurableObject<Env> {
     const doors = new Map<string, { closed: boolean; muted: string[] }>();
     for (const m of list) doors.set(m.id, await this.door(m.id));
     const visits = [...(await this.ctx.storage.list<string>({ prefix: 'visit:' }))].map(([k, h]) => ({ guest: k.slice(6), host: h }));
-    const members = list.map(m => ({ ...m, closed: !!doors.get(m.id)?.closed }));
+    const voices = new Map<string, { on: boolean; listen: boolean }>();
+    for (const m of list) voices.set(m.id, (await this.ctx.storage.get<{ on: boolean; listen: boolean }>('voice:' + m.id)) || { on: false, listen: false });
+    const members = list.map(m => ({ ...m, closed: !!doors.get(m.id)?.closed, voice: !!voices.get(m.id)?.on, listen: !!voices.get(m.id)?.listen && m.online }));
     for (const m of Object.values(ms)) {
       const admin = meta.admin === m.id;
       const msg = m.status === 'pending' ? { t: 'state', me: m.id, status: 'pending' }

@@ -5,7 +5,7 @@ import { saveNow } from './save';
    This device remembers which family it belongs to (code, its own id and secret token).
    Everything here fails quietly: without a server or a connection the island simply plays alone. */
 
-export interface Member { id: string; name: string; color: number; slot: number; online: boolean; closed?: boolean }
+export interface Member { id: string; name: string; color: number; slot: number; online: boolean; closed?: boolean; voice?: boolean; listen?: boolean }
 export type Status = 'none' | 'pending' | 'member';
 
 // the flag colours a family can choose from
@@ -41,6 +41,8 @@ export const famHooks = {
   gone: (_why: string) => {},                 // this device is no longer in a family
   live: (_m: any) => {},                      // a friend's boat moved, docked or sounded its horn
   visit: (_m: any) => {},                     // the bell, an answer, an invitation, goodbye
+  voice: (_m: any) => {},                     // voices: connecting (rtc, ice) and who is speaking (talk)
+  connected: () => {},                        // the live connection is (back) up
 };
 
 /* ---------- joining ---------- */
@@ -89,7 +91,7 @@ export function connect() {
   clearTimeout(retryTimer);
   const s = saved, w = new WebSocket(SERVER.replace(/^http/, 'ws') + '/api/ws?code=' + s.code + '&token=' + s.token);
   ws = w;
-  w.onopen = () => { fam.connected = true; retry = 2000; };
+  w.onopen = () => { fam.connected = true; retry = 2000; famHooks.connected(); };
   w.onmessage = e => {
     let m: any; try { m = JSON.parse(e.data); } catch { return; }
     if (m.t === 'state') {
@@ -103,6 +105,7 @@ export function connect() {
     }
     else if (m.t === 'snap') { try { famHooks.snap(m.id, JSON.parse(m.d)); } catch { /* a bad copy is ignored */ } }
     else if (m.t === 'pos' || m.t === 'horn') famHooks.live(m);
+    else if (m.t === 'rtc' || m.t === 'talk' || m.t === 'ice') famHooks.voice(m);
     else if (['knock', 'unknock', 'knockOk', 'knockNo', 'welcome', 'notNow', 'invited', 'bye', 'visitEnd'].includes(m.t)) famHooks.visit(m);
     else if (m.t === 'gone') forget(m.why);
   };

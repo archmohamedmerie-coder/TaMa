@@ -14,6 +14,7 @@ import { syncIslands, islandArrived, copyOf, here } from './islands';
 import { initFamily, familyChanged } from './family';
 import { initBoats, updateBoats, liveNews, remoteBoats } from './boats';
 import { visiting, visitNews, visitStateChanged, familyGone, initVisitors } from './visit';
+import { initVoice, voiceNews, voiceStateChanged, voiceConnected, voiceDebug } from './voice';
 import { initHero, settleHero, updateHero, heroCell, setFinger, clearFinger } from './hero';
 
 // on a friend's island her stars do not count and nothing is saved (save.ts holds the lock)
@@ -28,7 +29,10 @@ initFamily();
 
 /* ---------- the family archipelago ---------- */
 saveHooks.saved = shareIsland;
-famHooks.state = () => { syncIslands(); familyChanged(); visitStateChanged(); };
+famHooks.state = () => { syncIslands(); familyChanged(); visitStateChanged(); voiceStateChanged(); };
+famHooks.voice = voiceNews;
+famHooks.connected = voiceConnected;
+initVoice();
 famHooks.visit = visitNews;
 famHooks.gone = () => familyGone();
 initVisitors();
@@ -46,6 +50,8 @@ if (window.innerWidth >= 700) $('mission').classList.add('open');
 if (!state.seenIntro) $('intro').classList.add('open');
 
 window.addEventListener('resize', resize); resize();
+// the top row of buttons may wrap on a phone; the tools column follows its height
+{ const top = document.querySelector<HTMLElement>('.top .actions')!; new ResizeObserver(() => document.documentElement.style.setProperty('--toph', top.offsetHeight + 'px')).observe(top); }
 if (window.innerWidth < window.innerHeight) cam.dist = 44;
 
 let last = performance.now();
@@ -72,4 +78,4 @@ function frame(now: number) {
   tick(now); requestAnimationFrame(frame);
 }
 requestAnimationFrame(frame);
-(window as any).__garden = { tap, pick, voxels, state, cam, stats, heroCell, tick, fam, remoteBoats, copyOf, here, snapshot, setFinger, clearFinger, camera, view };
+(window as any).__garden = { tap, pick, voxels, state, cam, stats, heroCell, tick, fam, remoteBoats, voiceDebug, copyOf, here, snapshot, setFinger, clearFinger, camera, view };

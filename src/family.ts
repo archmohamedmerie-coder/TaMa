@@ -1,5 +1,6 @@
 import { fam, SERVER, COLORS, createFamily, joinFamily, leaveFamily, approve, removeMember } from './net';
 import { say } from './ui';
+import { voiceAllowed, setVoiceAllowed } from './voice';
 
 /* ---------- the parents' screen: create a family archipelago, join one with its code, let islands in ----------
    A small sum keeps fingers from opening it by accident. The real protection is the family code itself,
@@ -77,6 +78,9 @@ function render() {
       ${fam.pending.length ? '<h2>ينتظرون الموافقة</h2>' + fam.pending.map(p => `<div class="mem"><span class="nm">${esc(p.name)}</span><button class="mini ok" data-ok="${p.id}">موافقة</button><button class="mini" data-no="${p.id}">رفض</button></div>`).join('') : ''}
       <h2>الجزر</h2>
       ${fam.members.map(m => `<div class="mem"><span class="dot" style="background:${hex(m.color)}"></span><span class="nm">${esc(m.name)}${m.id === fam.me ? ' (هذا الجهاز)' : ''}</span><span class="st">${m.online ? 'حاضرة' : 'نائمة'}</span>${fam.admin && m.id !== fam.me ? `<button class="mini" data-no="${m.id}">إخراج</button>` : ''}</div>`).join('')}
+      <h2>الصوت لهذه الطفلة</h2>
+      <div class="row seg"><button class="btn${voiceAllowed() ? '' : ' ghost'}" id="fVoiceOn">مسموح</button><button class="btn${voiceAllowed() ? ' ghost' : ''}" id="fVoiceOff">مغلق</button></div>
+      <p class="hint">مع «مغلق» لا تتكلم ولا تسمع. يفيد وقت النوم أو الواجبات.</p>
       <div class="row"><button class="btn" id="fClose">إغلاق</button><button class="btn ghost" id="fLeave">${fam.admin ? 'حذف الأرخبيل' : 'مغادرة الأرخبيل'}</button></div>`;
   } else if (view === 'confirmLeave') {
     h = fam.admin
@@ -101,6 +105,8 @@ function wire() {
   on('fHave', () => { view = 'join'; note = ''; color = fam.color; render(); });
   on('fBack', () => { view = 'home'; note = ''; render(); });
   on('fLeave', () => { view = 'confirmLeave'; render(); });
+  on('fVoiceOn', () => { setVoiceAllowed(true); render(); });
+  on('fVoiceOff', () => { setVoiceAllowed(false); render(); });
   on('fLeaveYes', () => { leaveFamily(); view = 'home'; note = ''; render(); });
   document.querySelectorAll<HTMLElement>('#familyCard .sw').forEach(el => el.onclick = () => {
     color = Number(el.dataset.color);

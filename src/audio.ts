@@ -2,6 +2,8 @@ import { TYPES } from './types';
 import { state } from './save';
 
 let actx: AudioContext | null = null;
+// duck: a friend is speaking, so the garden's own sounds are played softer
+export const mix = { duck: false };
 function beep(f: number, d: number, slide?: number, type?: OscillatorType, vol?: number) {
   if (state.muted) return;
   try {
@@ -9,7 +11,7 @@ function beep(f: number, d: number, slide?: number, type?: OscillatorType, vol?:
     const o = actx.createOscillator(), g = actx.createGain(), t = actx.currentTime;
     o.type = type || 'sine'; o.frequency.setValueAtTime(f, t);
     if (slide) o.frequency.exponentialRampToValueAtTime(f * slide, t + d);
-    g.gain.setValueAtTime(vol || .09, t); g.gain.exponentialRampToValueAtTime(.001, t + d);
+    g.gain.setValueAtTime((vol || .09) * (mix.duck ? .3 : 1), t); g.gain.exponentialRampToValueAtTime(.001, t + d);
     o.connect(g); g.connect(actx.destination); o.start(t); o.stop(t + d);
   } catch (e) { /* audio unavailable */ }
 }
