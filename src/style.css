@@ -172,3 +172,9 @@ body.fp #mission{display:none}
 /* eleven tools: a second column when one would reach the palette */
 @media (min-width:641px) and (max-height:860px){.tools{grid-template-columns:1fr 1fr;gap:5px}}
 @media (max-width:640px) and (max-height:720px){.tools{grid-template-columns:1fr 1fr;gap:4px}}
+
+/* the boat button: appears on the pier beside the boat, and near the pier while sailing */
+.sail{position:absolute;left:50%;transform:translateX(-50%);bottom:calc(var(--pal,150px) + 24px);z-index:5;display:flex;align-items:center;gap:10px;padding:12px 26px 12px 22px;border-radius:999px;border:3px solid #fff;background:#2a9fd6;color:#fff;font:800 21px/1.2 'Baloo Bhaijaan 2',system-ui,sans-serif;box-shadow:var(--shadow);cursor:pointer}
+.sail[hidden]{display:none}
+.sail svg{width:30px;height:30px;fill:none;stroke:#fff;stroke-width:2;stroke-linejoin:round;stroke-linecap:round}
+body.fp .sail{bottom:28px}

@@ -32,10 +32,7 @@ export const world = new THREE.Group(); world.position.set(-N / 2, 0, -N / 2); s
   top.rotation.x = -Math.PI / 2; top.position.set(N / 2, 0, N / 2); top.receiveShadow = true; world.add(top);
   const dirt = new THREE.Mesh(new THREE.BoxGeometry(N, 1.2, N), new THREE.MeshLambertMaterial({ color: 0x9a6b3f }));
   dirt.position.set(N / 2, -.61, N / 2); world.add(dirt);
-  const sand = new THREE.Mesh(new THREE.BoxGeometry(N + 3, .5, N + 3), new THREE.MeshLambertMaterial({ color: 0xf0dfae }));
-  sand.position.set(N / 2, -1.1, N / 2); sand.receiveShadow = true; world.add(sand);
-  const sea = new THREE.Mesh(new THREE.PlaneGeometry(600, 600), new THREE.MeshLambertMaterial({ color: 0x58c3ef }));
-  sea.rotation.x = -Math.PI / 2; sea.position.y = -1.15; scene.add(sea);
+  // the beach, the sea and the pier around the garden are drawn in sea.ts
 })();
 
 // clouds

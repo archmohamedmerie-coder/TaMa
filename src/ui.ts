@@ -116,7 +116,7 @@ export function initUI() {
   $('tTurn').onclick = () => { setMode('turn'); say('اضغطي على أي قطعة لتدويرها.', 3000); };
   $('tMove').onclick = () => { setMode('move'); say('ضعي إصبعكِ على القطعة واسحبيها إلى مكانها الجديد.', 4000); };
   $('tSize').onclick = () => { setMode('size'); say('اضغطي على القطعة لتختاريها، ثم اسحبي إصبعكِ للأعلى لتكبيرها وللأسفل لتصغيرها.', 5000); };
-  $('tWalk').onclick = () => { setMode('walk'); say('ضعي إصبعكِ على الشاشة لتمشي صديقتكِ نحوه.', 4000); };
+  $('tWalk').onclick = () => { setMode('walk'); say('ضعي إصبعكِ على الشاشة لتمشي صديقتكِ نحوه. قاربكِ ينتظركِ عند الرصيف.', 5000); };
   $('tRoom').onclick = () => { tool.room.demolish = false; setMode('room'); say('اسحبي إصبعكِ على الأرض لترسمي غرفة.', 4000); };
   $('tRoof').onclick = () => { setMode('roof'); say('اختاري شكل السقف ثم اضغطي على البيت.', 4000); };
   $('tUndo').onclick = undo; $('tRedo').onclick = redo;

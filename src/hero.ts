@@ -5,6 +5,9 @@ import { state, save } from './save';
 import { world, baseMat, canvas, reduceMotion } from './render';
 import { planePoint } from './pick';
 import { cam, tool } from './input';
+import { say } from './ui';
+import { sfx } from './audio';
+import { WATER, SEA_R, STEP, boat, onLand, onPier, groundAt, steer, nearDock } from './sea';
 
 /* ---------- the walking character: a girl of eight or nine, facing +z ----------
    A cell is a metre: a storey is three cells and a door two. She stands 1.35 m tall, her eyes at 1.24. */
@@ -35,6 +38,10 @@ hero.scale.setScalar(S);
 
 // where she is: x and z anywhere on the ground, y the level she stands on
 let px = 9.5 + OFF, pz = 14.5 + OFF, py = 0, shownY = 0, facing = 0;
+// the height of the sand or the boat under her, added to the level she stands on
+let gy = 0;
+// sailing: she stands in her boat and the finger steers it
+let sailing = false, hintAt = 0;
 // the finger she is walking towards, in screen pixels
 let finger: { x: number; y: number } | null = null;
 const v3 = new THREE.Vector3();
@@ -42,7 +49,8 @@ const v3 = new THREE.Vector3();
 /* ---------- where she can stand ---------- */
 // flat pieces and flowers can be walked over, and doors can be walked through
 const passable = (v: Voxel | undefined) => !v || !!TYPES[v.t].flat || TYPES[v.t].cat === 'flower' || !!TYPES[v.t].door || !!TYPES[v.t].thin;
-const clear = (x: number, y: number, z: number) => inB(x, y, z) && passable(voxels.get(K(x, y, z)));
+// outside the garden she can walk on the dry sand and the pier, on ground level only
+const clear = (x: number, y: number, z: number) => inB(x, y, z) ? passable(voxels.get(K(x, y, z))) : y >= 0 && y < 2 && onLand(x + .5, z + .5);
 // she is taller than one cell: the cell at her feet and the one at her head must both be open
 const free = (x: number, y: number, z: number) => clear(x, y, z) && (y + 1 >= H || clear(x, y + 1, z));
 const floorAt = (x: number, y: number, z: number) => { if (y === 0) return true; const u = voxels.get(K(x, y - 1, z)); return !!u && isBlock(u.t); };
@@ -76,6 +84,7 @@ function nearestOpen(): [number, number, number] {
 }
 // after the world changes: move out of the way if she was built over, or step down if her floor is gone
 export function settleHero() {
+  if (sailing) return;
   if (fits(px, pz, py)) while (py > 0 && !footing(px, pz, py) && fits(px, pz, py - 1)) py--;
   if (!fits(px, pz, py) || !footing(px, pz, py)) { const c = nearestOpen(); px = c[0] + .5; py = c[1]; pz = c[2] + .5; }
 }
@@ -83,7 +92,7 @@ export function settleHero() {
 export function setFinger(x: number, y: number) { finger = { x, y }; }
 export function clearFinger() {
   if (!finger) return;
-  finger = null; state.hero = [px, py, pz]; save();
+  finger = null; state.hero = sailing ? [STEP.x, 0, STEP.z] : [px, py, pz]; save();
 }
 
 export function initHero() {
@@ -94,6 +103,7 @@ export function initHero() {
   }
   world.add(hero);
   settleHero();
+  $sail.onclick = () => { if (sailing) land(); else if (nearBoat()) board(); };
   shownY = py; hero.position.set(px, py + .5 * S, pz);
 }
 
@@ -101,6 +111,8 @@ export function updateHero(dt: number, now: number) {
   let walking = false;
   if (finger && tool.mode !== 'walk') clearFinger();
   if (!view.fp) { goal = null; pitch = -.05; }
+  showSailButton();
+  if (sailing) { sail(dt, now); return; }
   if (goal) {
     // through her eyes: she walks to the spot that was tapped, turning to face it
     let dx = goal.x - px, dz = goal.z - pz; const d = Math.hypot(dx, dz);
@@ -132,7 +144,8 @@ export function updateHero(dt: number, now: number) {
     cam.target.lerp(v3.set(px - N / 2, py, pz - N / 2), Math.min(1, dt * 3));
   }
   shownY += (py - shownY) * Math.min(1, dt * 14);
-  hero.position.set(px, shownY + .5 * S, pz);
+  gy += ((py === 0 ? groundAt(px, pz) : 0) - gy) * Math.min(1, dt * 14);
+  hero.position.set(px, shownY + gy + .5 * S, pz); hero.rotation.x = 0;
   hero.visible = !view.fp;
   bob = walking && !reduceMotion ? Math.sin(now * .011) * .03 : 0;
   const turn = ((facing - hero.rotation.y + Math.PI) % (Math.PI * 2) + Math.PI * 2) % (Math.PI * 2) - Math.PI;
@@ -143,7 +156,7 @@ export function updateHero(dt: number, now: number) {
 
 let bob = 0;
 // where her eyes are and which way she looks, in world cells
-export const heroEye = () => ({ x: px, y: shownY + EYE + bob, z: pz, f: facing, p: pitch });
+export const heroEye = () => ({ x: px, y: shownY + gy + EYE + bob, z: pz, f: facing, p: pitch });
 // through her eyes: the spot she is walking to, her head tilt, and a marker on the ground
 let goal: { x: number; z: number; left: number } | null = null, pitch = -.05, stuck = 0;
 const mark = new THREE.Mesh(new THREE.CylinderGeometry(.22, .22, .03, 16), new THREE.MeshBasicMaterial({ color: 0xffc22e, transparent: true, opacity: .75 }));
@@ -154,8 +167,8 @@ export function lookBy(dx: number, dy: number) {
 }
 // a tap sends her to that spot on the ground; a tap at the sky or far away walks her a few steps that way
 export function walkToScreen(sx: number, sy: number) {
-  const p = planePoint(sx, sy, py);
-  if (p && Math.hypot(p[0] - px, p[1] - pz) < 12) goal = { x: p[0], z: p[1], left: 600 };
+  const p = planePoint(sx, sy, sailing ? WATER : py);
+  if (p && Math.hypot(p[0] - px, p[1] - pz) < (sailing ? 40 : 12)) goal = { x: p[0], z: p[1], left: 600 };
   else {
     const r = canvas.getBoundingClientRect(), a = facing - ((sx - r.left) / r.width - .5) * 1.1;
     goal = { x: px + Math.sin(a) * 6, z: pz + Math.cos(a) * 6, left: 600 };
@@ -164,3 +177,43 @@ export function walkToScreen(sx: number, sy: number) {
 }
 // for tests from the console
 export const heroCell = () => [px, py, pz];
+
+/* ---------- the boat ---------- */
+const $sail = document.getElementById('sailBtn') as HTMLButtonElement;
+// standing on the pier beside the moored boat
+const nearBoat = () => !sailing && py === 0 && onPier(px, pz) && Math.hypot(px - STEP.x, pz - STEP.z) < 2.4;
+let shown = '';
+function showSailButton() {
+  const want = tool.mode !== 'walk' ? '' : sailing ? (nearDock() ? 'land' : '') : nearBoat() ? 'board' : '';
+  if (want === shown) return;
+  shown = want; $sail.hidden = !want;
+  $sail.querySelector('span')!.textContent = want === 'land' ? 'انزلي إلى الرصيف' : 'أبحري بالقارب';
+}
+function board() {
+  sailing = true; finger = null; goal = null; boat.v = 0; sfx.tick();
+  say('ضعي إصبعكِ على الماء ليبحر القارب نحوه.', 4000);
+}
+function land() {
+  sailing = false; finger = null; goal = null; boat.docking = true; sfx.tick();
+  px = STEP.x; pz = STEP.z; py = 0; shownY = 0; facing = Math.PI;
+  state.hero = [px, py, pz]; save();
+}
+function sail(dt: number, now: number) {
+  let tx: number | null = null, tz = 0;
+  if (finger && !view.fp) { const p = planePoint(finger.x, finger.y, WATER); if (p) { tx = p[0]; tz = p[1]; } }
+  else if (goal) { tx = goal.x; tz = goal.z; if (Math.hypot(tx - boat.x, tz - boat.z) < 1.5 || --goal.left < 0) goal = null; }
+  const moved = steer(dt, tx, tz);
+  // bumping the beach far from the pier: a gentle word on where to get off
+  if (!moved && tx != null && !nearDock() && now - hintAt > 12000) { hintAt = now; say('أوصلي القارب إلى الرصيف لتنزلي.', 3500); }
+  // she stands in the bow, in front of the mast and the sail, and looks where the boat goes
+  px = boat.x + Math.sin(boat.a) * 1.02; pz = boat.z + Math.cos(boat.a) * 1.02; py = 0; shownY = 0; gy = boat.y - .12;
+  facing = boat.a;
+  hero.position.set(px, gy + .5 * S, pz); hero.visible = !view.fp;
+  hero.rotation.y = boat.a; hero.rotation.x = boat.mesh.rotation.x;
+  bob = 0; legL.rotation.x = legR.rotation.x = armL.rotation.x = armR.rotation.x = 0;
+  mark.visible = false;
+  cam.target.lerp(v3.set(boat.x - N / 2, 0, boat.z - N / 2), Math.min(1, dt * 3));
+}
+// how far the view may wander from the middle of the garden
+export const roam = () => sailing ? SEA_R : N / 2 + 12;
+export const isSailing = () => sailing;

@@ -7,6 +7,7 @@ import { tap, cam, tool, placeCamera, initInput } from './input';
 import { updateInside, refreshInside } from './inside';
 import { checkGoals, stats } from './mission';
 import { $, buildPalette, syncUndo, initUI } from './ui';
+import { updateSea } from './sea';
 import { initHero, settleHero, updateHero, heroCell, setFinger, clearFinger } from './hero';
 
 hooks.afterChange = () => { checkGoals(false); updateLife(); settleHero(); refreshInside(); save(); };
@@ -32,6 +33,7 @@ function tick(now: number) {
   const dt = Math.min(.05, (now - last) / 1000); last = now;
   flushDirty(dirty);
   lightAt.copy(cam.target);
+  updateSea(dt, now);
   updateHero(dt, now);
   { const h = heroCell(); updateDoors(dt, h[0], h[1], h[2]); updateInside(h[0], h[1], h[2], cam.theta, view.fp ? 'fp' : tool.mode); }
   placeCamera();

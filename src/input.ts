@@ -5,7 +5,7 @@ import { canvas, camera, ghost, setRoomPreview, resize, showSelection } from './
 import { pick, targetFor, planePoint, type Hit } from './pick';
 import { sfx } from './audio';
 import { say, undo, redo } from './ui';
-import { setFinger, clearFinger, heroEye, lookBy, walkToScreen } from './hero';
+import { setFinger, clearFinger, heroEye, lookBy, walkToScreen, roam } from './hero';
 
 // current tool, shared with the palette in ui.ts
 export type Mode = 'build' | 'erase' | 'paint' | 'turn' | 'move' | 'size' | 'walk' | 'room' | 'roof';
@@ -282,7 +282,7 @@ export function placeCamera() {
     return;
   }
   cam.phi = Math.min(1.42, Math.max(.18, cam.phi)); cam.dist = Math.min(72, Math.max(2.6, cam.dist));
-  cam.target.x = Math.min(N / 2, Math.max(-N / 2, cam.target.x)); cam.target.z = Math.min(N / 2, Math.max(-N / 2, cam.target.z));
+  { const r = roam(); cam.target.x = Math.min(r, Math.max(-r, cam.target.x)); cam.target.z = Math.min(r, Math.max(-r, cam.target.z)); }
   // zoomed right in, the view rises from the ground to the height of the girl and the furniture
   const s = Math.sin(cam.phi), ty = cam.target.y + Math.max(0, 1 - cam.dist / 14) * 1.2;
   camera.position.set(cam.target.x + cam.dist * s * Math.sin(cam.theta), ty + cam.dist * Math.cos(cam.phi), cam.target.z + cam.dist * s * Math.cos(cam.theta));
