@@ -5,7 +5,7 @@ import { saveNow } from './save';
    This device remembers which family it belongs to (code, its own id and secret token).
    Everything here fails quietly: without a server or a connection the island simply plays alone. */
 
-export interface Member { id: string; name: string; color: number; slot: number; online: boolean }
+export interface Member { id: string; name: string; color: number; slot: number; online: boolean; closed?: boolean }
 export type Status = 'none' | 'pending' | 'member';
 
 // the flag colours a family can choose from
@@ -31,12 +31,16 @@ export const fam = {
   color: saved?.color ?? 0,
   members: [] as Member[],
   pending: [] as { id: string; name: string }[],
+  visits: [] as { guest: string; host: string }[],   // who is visiting whom right now
+  muted: [] as string[],                              // friends whose bell this child said "not now" to
+  mutedBy: [] as string[],                            // friends who said "not now" to this child
 };
 export const famHooks = {
   state: () => {},                            // membership or presence changed
   snap: (_id: string, _data: any) => {},      // a friend's island arrived or changed
   gone: (_why: string) => {},                 // this device is no longer in a family
   live: (_m: any) => {},                      // a friend's boat moved, docked or sounded its horn
+  visit: (_m: any) => {},                     // the bell, an answer, an invitation, goodbye
 };
 
 /* ---------- joining ---------- */
@@ -72,6 +76,7 @@ export const removeMember = (id: string) => send({ t: 'remove', id });
 function forget(why: string) {
   saved = null; try { localStorage.removeItem(KEY); } catch { /* storage unavailable */ }
   fam.status = 'none'; fam.admin = false; fam.code = ''; fam.members = []; fam.pending = []; fam.me = '';
+  fam.visits = []; fam.muted = []; fam.mutedBy = [];
   const w = ws; ws = null; if (w) { w.onclose = null; try { w.close(); } catch { /* closed */ } }
   fam.connected = false;
   famHooks.gone(why); famHooks.state();
@@ -91,12 +96,14 @@ export function connect() {
       const was = fam.status;
       fam.status = m.status; fam.admin = !!m.admin; fam.code = m.code || '';
       fam.members = m.members || []; fam.pending = m.pending || [];
+      fam.visits = m.visits || []; fam.muted = m.muted || []; fam.mutedBy = m.mutedBy || [];
       famHooks.state();
       // just let in, or back after being away: share the island as it is now
       if (fam.status === 'member' && (was !== 'member' || !sentOnce)) { sentOnce = true; saveNow(); }
     }
     else if (m.t === 'snap') { try { famHooks.snap(m.id, JSON.parse(m.d)); } catch { /* a bad copy is ignored */ } }
     else if (m.t === 'pos' || m.t === 'horn') famHooks.live(m);
+    else if (['knock', 'unknock', 'knockOk', 'knockNo', 'welcome', 'notNow', 'invited', 'bye', 'visitEnd'].includes(m.t)) famHooks.visit(m);
     else if (m.t === 'gone') forget(m.why);
   };
   w.onclose = () => {
@@ -109,6 +116,7 @@ export function connect() {
   };
 }
 // passing news that is not kept: where the boat is, the horn
+export const sendVisit = (m: unknown) => sendLive(m);
 export function sendLive(m: unknown) { if (fam.status === 'member') send(m); }
 function send(m: unknown) { if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(m)); }
 // come back quickly when the device wakes or the network returns

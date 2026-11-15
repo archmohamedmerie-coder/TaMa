@@ -18,6 +18,7 @@
       <span class="title">الحديقة السحرية</span>
     </button>
     <div class="actions">
+      <button class="round" id="visitBtn" hidden aria-label="زوار جزيرتكِ"><svg viewBox="0 0 24 24"><path d="M12 3.5a5.5 5.5 0 015.5 5.5v4.5l2 3H4.5l2-3V9A5.5 5.5 0 0112 3.5z"/><path d="M10 19.5a2 2 0 004 0"/></svg></button>
       <button class="round" id="familyBtn" aria-label="أرخبيل العائلة، للأهل"><svg viewBox="0 0 24 24"><path d="M2 19c2 0 2-1.5 4-1.5s2 1.5 4 1.5 2-1.5 4-1.5 2 1.5 4 1.5 2-1.5 4-1.5"/><path d="M5 15.5c1-3 4-4.5 7-4.5s6 1.5 7 4.5"/><path d="M12 11V3l5 2.5-5 2.5"/></svg></button>
       <button class="round" id="nightBtn" aria-label="نهار أو ليل"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="4.200"/><path d="M12 2.500v2.500M12 19v2.500M2.500 12H5M19 12h2.500M5.300 5.300l1.800 1.800M16.900 16.900l1.800 1.800M5.300 18.700l1.800-1.800M16.900 7.100l1.800-1.800"/></svg></button>
       <button class="round" id="fpBtn" aria-label="منظور عين البنت"><svg viewBox="0 0 24 24"><path d="M2 12s3.600-6.500 10-6.500S22 12 22 12s-3.600 6.500-10 6.500S2 12 2 12z"/><circle cx="12" cy="12" r="2.800"/></svg></button>
@@ -75,6 +76,16 @@
       </ul>
       <button class="btn" id="startBtn">ابدئي البناء</button>
     </div>
+  </div>
+
+  <div class="knock" id="knock" hidden role="alertdialog" aria-labelledby="knockText">
+    <svg viewBox="0 0 24 24"><path d="M12 3.5a5.5 5.5 0 015.5 5.5v4.5l2 3H4.5l2-3V9A5.5 5.5 0 0112 3.5z"/><path d="M10 19.5a2 2 0 004 0"/></svg>
+    <p id="knockText"></p>
+    <div class="row"><button class="btn" id="knockYes">أهلًا</button><button class="btn ghost" id="knockNo">ليس الآن</button></div>
+  </div>
+
+  <div class="overlay" id="visitors">
+    <div class="card family" id="visitorsCard"></div>
   </div>
 
   <div class="overlay" id="family">

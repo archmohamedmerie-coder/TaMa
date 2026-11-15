@@ -8,14 +8,16 @@ import { updateInside, refreshInside } from './inside';
 import { checkGoals, stats } from './mission';
 import { $, buildPalette, syncUndo, initUI } from './ui';
 import { updateSea } from './sea';
-import { saveHooks } from './save';
+import { saveHooks, snapshot } from './save';
 import { fam, famHooks, connect, shareIsland } from './net';
-import { syncIslands, islandArrived } from './islands';
+import { syncIslands, islandArrived, copyOf, here } from './islands';
 import { initFamily, familyChanged } from './family';
 import { initBoats, updateBoats, liveNews, remoteBoats } from './boats';
+import { visiting, visitNews, visitStateChanged, familyGone, initVisitors } from './visit';
 import { initHero, settleHero, updateHero, heroCell, setFinger, clearFinger } from './hero';
 
-hooks.afterChange = () => { checkGoals(false); updateLife(); settleHero(); refreshInside(); save(); };
+// on a friend's island her stars do not count and nothing is saved (save.ts holds the lock)
+hooks.afterChange = () => { if (!visiting()) checkGoals(false); updateLife(); settleHero(); refreshInside(); save(); };
 hooks.syncUndo = syncUndo;
 hooks.placed = pop;
 
@@ -26,7 +28,10 @@ initFamily();
 
 /* ---------- the family archipelago ---------- */
 saveHooks.saved = shareIsland;
-famHooks.state = () => { syncIslands(); familyChanged(); };
+famHooks.state = () => { syncIslands(); familyChanged(); visitStateChanged(); };
+famHooks.visit = visitNews;
+famHooks.gone = () => familyGone();
+initVisitors();
 famHooks.snap = islandArrived;
 famHooks.live = liveNews;
 initBoats();
@@ -67,4 +72,4 @@ function frame(now: number) {
   tick(now); requestAnimationFrame(frame);
 }
 requestAnimationFrame(frame);
-(window as any).__garden = { tap, pick, voxels, state, cam, stats, heroCell, tick, fam, remoteBoats, setFinger, clearFinger, camera, view };
+(window as any).__garden = { tap, pick, voxels, state, cam, stats, heroCell, tick, fam, remoteBoats, copyOf, here, snapshot, setFinger, clearFinger, camera, view };

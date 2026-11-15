@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { N } from './world';
 import { world, groundMeshes, staticIsland } from './render';
-import { islandScenery, paintIsland, raiseFlag, waveFlags, setIsles, own, type Scenery } from './sea';
+import { islandScenery, paintIsland, raiseFlag, waveFlags, setIsles, own, hostBoat, boatGeo, type Scenery } from './sea';
 import { fam, COLORS } from './net';
 
 /* ---------- the friends' islands around this child's own ----------
@@ -39,12 +39,29 @@ export function writeName(s: THREE.Sprite, text: string, color: number, away: bo
 }
 const ownLabel = nameSprite(); ownLabel.visible = false; own.group.add(ownLabel);
 
+/* ---------- which island is "here" ----------
+   The island drawn live in the middle of the world, where she can walk, open doors and build, is her own,
+   except while she visits a friend: then it is the friend's, and her own is drawn from its copy like any other.
+   Everything else is placed around "here". */
+export const here = { id: '' };                       // '' while she is at home
+const baseId = () => here.id || fam.me;
+const slotOf = (id: string) => fam.members.find(m => m.id === id)?.slot ?? 0;
+// a friend's island changed while she stands on it: visit.ts redraws the world
+export const islandHooks = { hostChanged: (_data: any) => {} };
+// her own island's copy, drawn while she is away visiting (null when she comes home)
+export function setOwnCopy(data: any | null) {
+  if (data) snaps.set(fam.me, data); else snaps.delete(fam.me);
+  const i = isles.get(fam.me); if (i) rebuild(i);
+}
+export const copyOf = (id: string) => snaps.get(id);
+let hostColor = -1;
+
 /* ---------- keeping the islands in step with the family ---------- */
 export function syncIslands() {
   const member = fam.status === 'member';
-  const meSlot = fam.members.find(m => m.id === fam.me)?.slot ?? 0;
-  const others = member ? fam.members.filter(m => m.id !== fam.me && m.slot != null && SLOT[m.slot]) : [];
-  for (const [id, isle] of isles) if (!others.some(m => m.id === id)) { drop(isle); isles.delete(id); snaps.delete(id); }
+  const meSlot = slotOf(baseId());
+  const others = member ? fam.members.filter(m => m.id !== baseId() && m.slot != null && SLOT[m.slot]) : [];
+  for (const [id, isle] of isles) if (!others.some(m => m.id === id)) { drop(isle); isles.delete(id); if (id !== fam.me && id !== here.id) snaps.delete(id); }
   for (const m of others) {
     let isle = isles.get(m.id);
     if (!isle) {
@@ -56,20 +73,31 @@ export function syncIslands() {
     isle.group.position.set(SLOT[m.slot][0] - SLOT[meSlot][0], 0, SLOT[m.slot][1] - SLOT[meSlot][1]);
     paintIsland(isle.scenery, COLORS[m.color] ?? COLORS[0]);
     raiseFlag(isle.scenery, m.online);
+    isle.scenery.sign.visible = !!m.closed;
+    // her own island while she visits: her boat is with her at the friend's pier
+    if (m.id === fam.me) isle.scenery.boat.visible = false;
     const key = m.name + '|' + m.color + '|' + m.online;
     if (isle.text !== key) { isle.text = key; writeName(isle.label, m.name, COLORS[m.color] ?? COLORS[0], !m.online); }
   }
-  // her own island wears her family colour and her name once she belongs to a family
-  paintIsland(own, COLORS[fam.color] ?? COLORS[0]);
+  // the island here wears its owner's colour and name: hers at home, her friend's while she visits
+  const host = here.id ? fam.members.find(m => m.id === here.id) : undefined;
+  const hc = host ? host.color : fam.color, hn = host ? host.name : fam.name;
+  paintIsland(own, COLORS[hc] ?? COLORS[0]);
   ownLabel.visible = member;
-  if (member) writeName(ownLabel, fam.name, COLORS[fam.color] ?? COLORS[0], false);
+  if (member) writeName(ownLabel, hn, COLORS[hc] ?? COLORS[0], false);
+  own.sign.visible = !!fam.members.find(m => m.id === baseId())?.closed;
+  if (host && hostColor === -1) hostBoat.visible = true;   // her friend's boat at its side of the pier, until it is seen sailing
+  if (host && hostColor !== host.color) { hostColor = host.color; hostBoat.geometry.dispose(); hostBoat.geometry = boatGeo(COLORS[host.color] ?? COLORS[0]); }
+  if (!host) { hostColor = -1; hostBoat.visible = false; }
   setIsles([{ x: 0, z: 0 }, ...[...isles.values()].map(i => ({ x: i.group.position.x, z: i.group.position.z }))]);
   waveFlags([own, ...[...isles.values()].map(i => i.scenery)]);
 }
 
 export function islandArrived(id: string, data: any) {
   if (!data || !Array.isArray(data.voxels)) return;
+  if (id === fam.me) return;                  // her own copy, echoed back: she has the real thing
   snaps.set(id, data);
+  if (id === here.id) { islandHooks.hostChanged(data); return; }
   const isle = isles.get(id); if (!isle) return;
   // a friend building quickly sends many copies; draw only the latest
   clearTimeout(isle.timer); isle.timer = window.setTimeout(() => rebuild(isle), 300);
@@ -91,11 +119,15 @@ function disposeAll(o: THREE.Object3D) {
 
 // where a family member's garden starts, seen from this child's garden (null if not in the family)
 export function offsetOf(id: string): [number, number] | null {
-  const meSlot = fam.members.find(m => m.id === fam.me)?.slot ?? 0, m = fam.members.find(x => x.id === id);
+  const meSlot = slotOf(baseId()), m = fam.members.find(x => x.id === id);
   if (!m || m.slot == null || !SLOT[m.slot]) return null;
   return [SLOT[m.slot][0] - SLOT[meSlot][0], SLOT[m.slot][1] - SLOT[meSlot][1]];
 }
 // where this child's garden starts in the archipelago, so positions can be shared in one frame for everyone
-export const myPlace = (): [number, number] => { const s = SLOT[fam.members.find(m => m.id === fam.me)?.slot ?? 0] || SLOT[0]; return [s[0], s[1]]; };
+// (while she visits, "here" is her friend's garden, so this is that garden's place)
+export const myPlace = (): [number, number] => { const s = SLOT[slotOf(baseId())] || SLOT[0]; return [s[0], s[1]]; };
 // a friend's boat is shown at her pier, or hidden there while she sails it
-export function setMoored(id: string, shown: boolean) { const i = isles.get(id); if (i) i.scenery.boat.visible = shown; }
+export function setMoored(id: string, shown: boolean) {
+  if (id === here.id && here.id) { hostBoat.visible = shown; return; }
+  const i = isles.get(id); if (i) i.scenery.boat.visible = shown && id !== fam.me;
+}

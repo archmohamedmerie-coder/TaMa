@@ -6,16 +6,27 @@ export const SAVE_KEY = storeKey('makabi-garden-v1');
 export const saveHooks = { saved: (_data: { voxels: Entry[]; floors: [number, number, number, string][] }) => {} };
 export const state = { stars: [false, false, false], night: false, muted: false, seenIntro: false, winShown: false, hero: null as number[] | null };
 
+/* While she visits a friend's island, the world on screen is her friend's. Then nothing may be saved
+   or shared as hers: this lock is on for the whole visit, and only visit.ts turns it on and off. */
+export const saveLock = { on: false };
+
+// the world on screen as save entries
+export function snapshot() {
+  const list: Entry[] = []; voxels.forEach((v, k) => { if (v.of != null) return; const c = unK(k); const e: Entry = [c[0], c[1], c[2], v.t, v.r || 0]; if (v.c != null || v.o || v.s) e.push(v.c != null ? v.c : null); if (v.o || v.s) e.push(v.o ? v.o[0] : 0, v.o ? v.o[1] : 0); if (v.s) e.push(v.s); list.push(e); });
+  const floors: [number, number, number, string][] = []; voxels.forEach((v, k) => { if (v.f) { const c = unK(k); floors.push([c[0], c[1], c[2], v.f]); } });
+  return { voxels: list, floors };
+}
 let saveTimer: number | undefined;
 export function saveNow() {
+  clearTimeout(saveTimer);
+  if (saveLock.on) return;
   try {
-    const list: Entry[] = []; voxels.forEach((v, k) => { if (v.of != null) return; const c = unK(k); const e: Entry = [c[0], c[1], c[2], v.t, v.r || 0]; if (v.c != null || v.o || v.s) e.push(v.c != null ? v.c : null); if (v.o || v.s) e.push(v.o ? v.o[0] : 0, v.o ? v.o[1] : 0); if (v.s) e.push(v.s); list.push(e); });
-    const floors: [number, number, number, string][] = []; voxels.forEach((v, k) => { if (v.f) { const c = unK(k); floors.push([c[0], c[1], c[2], v.f]); } });
-    try { localStorage.setItem(SAVE_KEY, JSON.stringify({ v: 3, voxels: list, floors, state })); } catch (e) { /* storage unavailable */ }
-    saveHooks.saved({ voxels: list, floors });
+    const s = snapshot();
+    try { localStorage.setItem(SAVE_KEY, JSON.stringify({ v: 3, voxels: s.voxels, floors: s.floors, state })); } catch (e) { /* storage unavailable */ }
+    saveHooks.saved(s);
   } catch (e) { /* nothing to save */ }
 }
-export function save() { clearTimeout(saveTimer); saveTimer = window.setTimeout(saveNow, 400); }
+export function save() { clearTimeout(saveTimer); if (!saveLock.on) saveTimer = window.setTimeout(saveNow, 400); }
 export function restore(): boolean {
   try {
     const d = JSON.parse(localStorage.getItem(SAVE_KEY) || 'null');

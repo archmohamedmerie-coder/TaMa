@@ -15,6 +15,9 @@ const DRY = 3.1;                           // how far out the sand is dry enough
 export const PIER = { x0: N / 2 - 1, x1: N / 2 + 1, z0: N, z1: N + 11 };
 export const DOCK = { x: N / 2 + 2.4, z: N + 8.6, a: 0 };   // where the boat is moored, its bow out to sea
 export const STEP = { x: N / 2 + .45, z: N + 8.6 };          // the spot on the pier beside the boat
+// the other side of the pier, where a visiting friend moors her boat and steps ashore
+export const GUEST = { x: N / 2 - 2.4, z: N + 8.6, a: 0 };
+export const GUEST_STEP = { x: N / 2 - .45, z: N + 8.6 };
 
 // the islands in the sea, by where their garden starts; this child's own island is always at 0, 0
 export let isles: { x: number; z: number }[] = [{ x: 0, z: 0 }];
@@ -105,7 +108,13 @@ const FLAG_AT = { x: N / 2 - 1.6, z: N + 1.2 };
 const FLAG_UP = groundAt(FLAG_AT.x, FLAG_AT.z) + 3.25, FLAG_DOWN = groundAt(FLAG_AT.x, FLAG_AT.z) + .9;
 const flagGeo = (color: number) => M([box(1.3, .8, .05, color, .65, 0, 0), box(.36, .36, .07, 0xffffff, .65, .22, 0)]);
 
-export interface Scenery { group: THREE.Group; flag: THREE.Mesh; boat: THREE.Mesh; color: number }
+let signGeo: THREE.BufferGeometry | null = null;
+function makeSign() {
+  const x = N / 2 - 1.02, z = GUEST.z;
+  const g = M([box(.14, 1.25, .14, 0xf4f1ea, x, 0, z), box(.08, .55, .9, 0xe2475f, x - .02, .9, z), box(.1, .12, .62, 0xffffff, x - .03, 1.11, z)]);
+  g.userData.shared = true; return g;
+}
+export interface Scenery { group: THREE.Group; flag: THREE.Mesh; boat: THREE.Mesh; sign: THREE.Mesh; color: number }
 // everything around a garden except the garden itself; added to the given group, which sits where the garden starts
 export function islandScenery(group: THREE.Group, color: number): Scenery {
   const sand = new THREE.Mesh(sandGeo || (sandGeo = makeSand()), new THREE.MeshLambertMaterial({ vertexColors: true }));
@@ -114,8 +123,10 @@ export function islandScenery(group: THREE.Group, color: number): Scenery {
   const flag = new THREE.Mesh(flagGeo(color), baseMat); flag.castShadow = true; flag.position.set(FLAG_AT.x, FLAG_UP, FLAG_AT.z);
   const boat = new THREE.Mesh(boatGeo(color), baseMat); boat.castShadow = true;
   boat.position.set(DOCK.x, WATER + .05, DOCK.z); boat.rotation.y = DOCK.a;
-  group.add(sand, pier, flag, boat);
-  return { group, flag, boat, color };
+  // "not receiving visitors now": a red board on a post at the guest berth
+  const sign = new THREE.Mesh(signGeo || (signGeo = makeSign()), baseMat); sign.visible = false; sign.castShadow = true;
+  group.add(sand, pier, flag, boat, sign);
+  return { group, flag, boat, sign, color };
 }
 // a new colour for an island's flag and sail
 export function paintIsland(s: Scenery, color: number) {
@@ -151,7 +162,11 @@ export function boatGeo(sail: number) {
 const ownGroup = new THREE.Group(); world.add(ownGroup);
 export const own = islandScenery(ownGroup, 0xff6fa5);
 own.flag.userData.up = true;
-export const boat = { x: DOCK.x, z: DOCK.z, a: DOCK.a, v: 0, y: WATER, docking: false, mesh: own.boat };
+// berth: where the boat ties up when she steps off: her own pier, or the guest side of a friend's while she visits
+export const boat = { x: DOCK.x, z: DOCK.z, a: DOCK.a, v: 0, y: WATER, docking: false, mesh: own.boat, berth: DOCK as { x: number; z: number; a: number } };
+// while she visits, the island on screen is her friend's: its owner's boat waits at her own side of the pier
+export const hostBoat = new THREE.Mesh(boatGeo(0xff6fa5), baseMat);
+hostBoat.castShadow = true; hostBoat.visible = false; hostBoat.position.set(DOCK.x, WATER + .05, DOCK.z); ownGroup.add(hostBoat);
 
 // where the islands are, as offsets of their gardens from this child's garden (her own first)
 export function setIsles(list: { x: number; z: number }[]) {
@@ -199,7 +214,7 @@ export function steer(dt: number, tx: number | null, tz: number) {
   boat.v = 0; return false;
 }
 // close enough to her pier to step off; generous, since the boat cannot always turn into its berth
-export const nearDock = () => Math.hypot(boat.x - DOCK.x, boat.z - DOCK.z) < 5.5;
+export const nearDock = () => Math.hypot(boat.x - boat.berth.x, boat.z - boat.berth.z) < 5.5;
 
 // cx, cz: the middle of the view, in garden cells
 export function updateSea(dt: number, now: number, cx: number, cz: number) {
@@ -216,7 +231,8 @@ export function updateSea(dt: number, now: number, cx: number, cz: number) {
   }
   if (boat.docking) {
     const k = Math.min(1, dt * 3);
-    boat.x += (DOCK.x - boat.x) * k; boat.z += (DOCK.z - boat.z) * k; boat.a += wrap(DOCK.a - boat.a) * k; boat.v = 0;
+    const B = boat.berth;
+    boat.x += (B.x - boat.x) * k; boat.z += (B.z - boat.z) * k; boat.a += wrap(B.a - boat.a) * k; boat.v = 0;
   }
   // her boat rides the swell, rocking a little with its slope
   const s = Math.sin(boat.a), c = Math.cos(boat.a);

@@ -103,7 +103,6 @@ export function initHero() {
   }
   world.add(hero);
   settleHero();
-  $sail.onclick = () => { if (sailing) land(); else if (nearBoat()) board(); };
   shownY = py; hero.position.set(px, py + .5 * S, pz);
 }
 
@@ -111,7 +110,7 @@ export function updateHero(dt: number, now: number) {
   let walking = false;
   if (finger && tool.mode !== 'walk') clearFinger();
   if (!view.fp) { goal = null; pitch = -.05; }
-  showSailButton();
+  boatHooks.ui();
   if (sailing) { sail(dt, now); return; }
   if (goal) {
     // through her eyes: she walks to the spot that was tapped, turning to face it
@@ -178,33 +177,30 @@ export function walkToScreen(sx: number, sy: number) {
 // for tests from the console
 export const heroCell = () => [px, py, pz];
 
-/* ---------- the boat ---------- */
-const $sail = document.getElementById('sailBtn') as HTMLButtonElement;
-// standing on the pier beside the moored boat
-const nearBoat = () => !sailing && py === 0 && onPier(px, pz) && Math.hypot(px - STEP.x, pz - STEP.z) < 2.4;
-let shown = '';
-function showSailButton() {
-  const want = tool.mode !== 'walk' ? '' : sailing ? (nearDock() ? 'land' : '') : nearBoat() ? 'board' : '';
-  if (want === shown) return;
-  shown = want; $sail.hidden = !want;
-  $sail.querySelector('span')!.textContent = want === 'land' ? 'انزلي إلى الرصيف' : 'أبحري بالقارب';
+/* ---------- the boat ----------
+   The big boat button (board, step off, ring a friend's bell) is run by visit.ts through boatHooks.ui. */
+export const boatHooks = { ui: () => {}, bumped: () => { say('أوصلي القارب إلى الرصيف لتنزلي.', 3500); } };
+// standing on the pier beside the moored boat; step: the spot beside the boat's berth
+export const nearBoat = (step: { x: number; z: number } = STEP) => !sailing && py === 0 && onPier(px, pz) && Math.hypot(px - step.x, pz - step.z) < 2.4;
+export function board(quiet?: boolean) {
+  sailing = true; finger = null; goal = null; boat.v = 0; boat.docking = false;
+  if (!quiet) { sfx.tick(); say('ضعي إصبعكِ على الماء ليبحر القارب نحوه.', 4000); }
 }
-function board() {
-  sailing = true; finger = null; goal = null; boat.v = 0; sfx.tick();
-  say('ضعي إصبعكِ على الماء ليبحر القارب نحوه.', 4000);
-}
-function land() {
+// step off onto the pier beside the boat's berth; the boat glides into it
+export function land(step: { x: number; z: number } = STEP) {
   sailing = false; finger = null; goal = null; boat.docking = true; sfx.tick();
-  px = STEP.x; pz = STEP.z; py = 0; shownY = 0; facing = Math.PI;
+  px = step.x; pz = step.z; py = 0; shownY = 0; gy = 0; facing = Math.PI;
   state.hero = [px, py, pz]; save();
 }
+// where her feet are and which way she faces, in garden cells
+export const heroFeet = () => ({ x: px, y: shownY + gy, z: pz, f: facing, walking: !!finger || !!goal });
 function sail(dt: number, now: number) {
   let tx: number | null = null, tz = 0;
   if (finger && !view.fp) { const p = planePoint(finger.x, finger.y, WATER); if (p) { tx = p[0]; tz = p[1]; } }
   else if (goal) { tx = goal.x; tz = goal.z; if (Math.hypot(tx - boat.x, tz - boat.z) < 1.5 || --goal.left < 0) goal = null; }
   const moved = steer(dt, tx, tz);
   // bumping the beach far from the pier: a gentle word on where to get off
-  if (!moved && tx != null && !nearDock() && now - hintAt > 12000) { hintAt = now; say('أوصلي القارب إلى الرصيف لتنزلي.', 3500); }
+  if (!moved && tx != null && !nearDock() && now - hintAt > 12000) { hintAt = now; boatHooks.bumped(); }
   // she stands in the bow, in front of the mast and the sail, and looks where the boat goes
   px = boat.x + Math.sin(boat.a) * 1.02; pz = boat.z + Math.cos(boat.a) * 1.02; py = 0; shownY = 0; gy = boat.y - .12;
   facing = boat.a;

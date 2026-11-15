@@ -147,9 +147,12 @@ export class Archipelago extends DurableObject<Env> {
     else if ((msg.t === 'pos' || msg.t === 'horn') && me.status === 'member') {
       const num = (v: unknown) => { const n = Number(v); return Number.isFinite(n) && Math.abs(n) < 1e4 ? Math.round(n * 100) / 100 : 0; };
       const out = JSON.stringify(msg.t === 'horn' ? { t: 'horn', id: me.id }
-        : msg.docked ? { t: 'pos', id: me.id, docked: true } : { t: 'pos', id: me.id, x: num(msg.x), z: num(msg.z), a: num(msg.a) });
+        : msg.docked ? { t: 'pos', id: me.id, docked: true } : msg.m === 'walk' ? { t: 'pos', id: me.id, m: 'walk', x: num(msg.x), y: num(msg.y), z: num(msg.z), a: num(msg.a), bx: num(msg.bx), bz: num(msg.bz), ba: num(msg.ba) }
+        : { t: 'pos', id: me.id, m: 'boat', x: num(msg.x), z: num(msg.z), a: num(msg.a) });
       for (const o of this.memberSockets(ms)) if (o !== ws) { try { o.send(out); } catch { /* closed */ } }
     }
+    /* ---------- visits: the bell at the pier, the answer, the sign, goodbye ---------- */
+    else if (me.status === 'member' && ['knock', 'unknock', 'answer', 'invite', 'door', 'bye', 'endVisit'].includes(msg.t)) await this.visits(ws, ms, me, msg);
     else if (msg.t === 'approve' && admin && ms[msg.id]?.status === 'pending') {
       const used = new Set(Object.values(ms).map(m => m.slot));
       let slot = 0; while (used.has(slot)) slot++;
@@ -165,10 +168,90 @@ export class Archipelago extends DurableObject<Env> {
       await this.ctx.storage.deleteAll();
     }
   }
-  async webSocketClose(ws: WebSocket) { try { ws.close(); } catch { /* closed */ } await this.broadcast(ws); }
-  async webSocketError(ws: WebSocket) { await this.broadcast(ws); }
+  async webSocketClose(ws: WebSocket) { try { ws.close(); } catch { /* closed */ } await this.gone(ws); }
+  async webSocketError(ws: WebSocket) { await this.gone(ws); }
+  // a device went away: if that was the child's last connection, end her visits and knocks
+  private async gone(ws: WebSocket) {
+    const { id } = (ws.deserializeAttachment() || {}) as { id?: string };
+    if (id && !this.ctx.getWebSockets(id).some(w => w !== ws && w.readyState === WebSocket.OPEN)) await this.endAll(id, 'away', ws);
+    await this.broadcast(ws);
+  }
+  private tell(id: string, m: unknown, except?: WebSocket) {
+    const s = JSON.stringify(m);
+    for (const o of this.ctx.getWebSockets(id)) if (o !== except) { try { o.send(s); } catch { /* closed */ } }
+  }
+  private async door(id: string) { return (await this.ctx.storage.get<{ closed: boolean; muted: string[] }>('door:' + id)) || { closed: false, muted: [] }; }
+  // end every visit and knock this child is part of, as guest or as host
+  private async endAll(id: string, why: string, except?: WebSocket) {
+    const all = await this.ctx.storage.list<string>({ prefix: 'visit:' });
+    for (const [k, host] of all) {
+      const guest = k.slice(6);
+      if (guest === id) { await this.ctx.storage.delete(k); this.tell(host, { t: 'visitEnd', id }, except); }
+      else if (host === id) { await this.ctx.storage.delete(k); this.tell(guest, { t: 'bye', host: id, why }, except); }
+    }
+    const knocks = await this.ctx.storage.list<string>({ prefix: 'knock:' });
+    for (const [k, host] of knocks) {
+      const guest = k.slice(6);
+      if (guest === id) { await this.ctx.storage.delete(k); this.tell(host, { t: 'unknock', from: id }, except); }
+      else if (host === id) { await this.ctx.storage.delete(k); this.tell(guest, { t: 'knockNo', host: id, why: 'away' }, except); }
+    }
+  }
+  private async visits(ws: WebSocket, ms: Record<string, Member>, me: Member, msg: any) {
+    const other = typeof msg.host === 'string' ? msg.host : typeof msg.to === 'string' ? msg.to : typeof msg.id === 'string' ? msg.id : '';
+    const isMember = (id: string) => ms[id]?.status === 'member';
+    const online = (id: string) => this.ctx.getWebSockets(id).some(w => w.readyState === WebSocket.OPEN);
+    if (msg.t === 'knock') {
+      // she rings at a friend's pier
+      const host = other, d = await this.door(host);
+      const why = !isMember(host) || host === me.id || !online(host) ? 'away' : d.closed ? 'closed' : d.muted.includes(me.id) ? 'muted'
+        : (await this.ctx.storage.get('visit:' + me.id)) ? 'busy' : '';
+      if (why) { ws.send(JSON.stringify({ t: 'knockNo', host, why })); return; }
+      await this.ctx.storage.put('knock:' + me.id, host);
+      this.tell(host, { t: 'knock', from: me.id });
+      ws.send(JSON.stringify({ t: 'knockOk', host }));
+    }
+    else if (msg.t === 'unknock') {
+      const host = await this.ctx.storage.get<string>('knock:' + me.id);
+      if (host) { await this.ctx.storage.delete('knock:' + me.id); this.tell(host, { t: 'unknock', from: me.id }); }
+    }
+    else if (msg.t === 'answer') {
+      // the owner of the island answers the bell
+      const guest = other;
+      if ((await this.ctx.storage.get<string>('knock:' + guest)) !== me.id) return;
+      await this.ctx.storage.delete('knock:' + guest);
+      if (msg.yes) { await this.ctx.storage.put('visit:' + guest, me.id); this.tell(guest, { t: 'welcome', host: me.id }); }
+      else {
+        // not now: her bell stays silent for this friend until she invites her
+        const d = await this.door(me.id); if (!d.muted.includes(guest)) d.muted.push(guest);
+        await this.ctx.storage.put('door:' + me.id, d); this.tell(guest, { t: 'notNow', host: me.id });
+      }
+      await this.broadcast();
+    }
+    else if (msg.t === 'invite' && isMember(other)) {
+      const d = await this.door(me.id); d.muted = d.muted.filter(x => x !== other);
+      await this.ctx.storage.put('door:' + me.id, d);
+      this.tell(other, { t: 'invited', host: me.id });
+      await this.broadcast();
+    }
+    else if (msg.t === 'door') {
+      const d = await this.door(me.id); d.closed = !!msg.closed;
+      await this.ctx.storage.put('door:' + me.id, d);
+      await this.broadcast();
+    }
+    else if (msg.t === 'bye') {
+      if ((await this.ctx.storage.get<string>('visit:' + other)) !== me.id) return;
+      await this.ctx.storage.delete('visit:' + other);
+      this.tell(other, { t: 'bye', host: me.id, why: 'host' });
+      await this.broadcast();
+    }
+    else if (msg.t === 'endVisit') {
+      const host = await this.ctx.storage.get<string>('visit:' + me.id);
+      if (host) { await this.ctx.storage.delete('visit:' + me.id); this.tell(host, { t: 'visitEnd', id: me.id }); await this.broadcast(); }
+    }
+  }
 
   private async drop(ms: Record<string, Member>, id: string, why: string) {
+    await this.endAll(id, 'away'); await this.ctx.storage.delete('door:' + id);
     delete ms[id];
     await this.ctx.storage.put('members', ms); await this.ctx.storage.delete('snap:' + id);
     for (const o of this.ctx.getWebSockets(id)) { try { o.send(JSON.stringify({ t: 'gone', why })); o.close(4000, 'gone'); } catch { /* closed */ } }
@@ -192,10 +275,15 @@ export class Archipelago extends DurableObject<Env> {
     const online = (id: string) => this.ctx.getWebSockets(id).some(w => w !== closing && w.readyState === WebSocket.OPEN);
     const list = Object.values(ms).filter(m => m.status === 'member').map(m => ({ id: m.id, name: m.name, color: m.color, slot: m.slot, online: online(m.id) }));
     const pending = Object.values(ms).filter(m => m.status === 'pending').map(m => ({ id: m.id, name: m.name }));
+    const doors = new Map<string, { closed: boolean; muted: string[] }>();
+    for (const m of list) doors.set(m.id, await this.door(m.id));
+    const visits = [...(await this.ctx.storage.list<string>({ prefix: 'visit:' }))].map(([k, h]) => ({ guest: k.slice(6), host: h }));
+    const members = list.map(m => ({ ...m, closed: !!doors.get(m.id)?.closed }));
     for (const m of Object.values(ms)) {
       const admin = meta.admin === m.id;
       const msg = m.status === 'pending' ? { t: 'state', me: m.id, status: 'pending' }
-        : { t: 'state', me: m.id, status: 'member', admin, code: admin ? meta.code : undefined, members: list, pending: admin ? pending : [] };
+        : { t: 'state', me: m.id, status: 'member', admin, code: admin ? meta.code : undefined, members, pending: admin ? pending : [], visits,
+            muted: doors.get(m.id)?.muted || [], mutedBy: list.filter(h => doors.get(h.id)?.muted.includes(m.id)).map(h => h.id) };
       const s = JSON.stringify(msg);
       for (const o of this.ctx.getWebSockets(m.id)) if (o !== closing) { try { o.send(s); } catch { /* closed */ } }
     }
