@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { TYPES, isBlock } from './types';
-import { N, H, K, unK, inB, voxels, commit, cellsOf, offCell, sizeOf, type Placement, type Op, type Cell, swapOp, pieceKeys, anchorKey, turnStep, roomOp, roofOp, view, dirty, isLoose, isSizable, SIZE_MIN, SIZE_MAX, type RoofShape } from './world';
+import { N, H, K, unK, inB, voxels, commit, cellsOf, offCell, sizeOf, type Placement, type Op, type Cell, swapOp, pieceKeys, anchorKey, turnStep, roomOp, roofOp, view, dirty, isLoose, isSizable, isStructure, isWall, wallBeside, demolishOp, SIZE_MIN, SIZE_MAX, type RoofShape } from './world';
 import { canvas, camera, ghost, setRoomPreview, resize, showSelection } from './render';
 import { pick, targetFor, planePoint, type Hit } from './pick';
 import { sfx } from './audio';
@@ -15,8 +15,8 @@ export const STOREY = 3;
 // room: the wall material and number of storeys used by the room tool
 // roof: the shape and colour used by the roof tool (null colour = red tiles)
 // sel: the piece chosen with the size tool (its anchor key)
-export const tool: { sel: number | null; mode: Mode; selected: string; color: number | null; room: { wall: string; storeys: number }; roof: { shape: RoofShape; color: number | null } } =
-  { sel: null, mode: 'build', selected: 'rose', color: 0xe5383b, room: { wall: 'white', storeys: 1 }, roof: { shape: 'gable', color: null } };
+export const tool: { sel: number | null; mode: Mode; selected: string; color: number | null; room: { wall: string; storeys: number; demolish: boolean }; eraseFloors: boolean; roof: { shape: RoofShape; color: number | null } } =
+  { sel: null, mode: 'build', selected: 'rose', color: 0xe5383b, room: { wall: 'wallWhite', storeys: 1, demolish: false }, eraseFloors: false, roof: { shape: 'gable', color: null } };
 
 // Where a window or door goes when a wall is tapped: in the wall, facing out of the tapped side,
 // in the wall's own colour. Returns null when it does not fit there.
@@ -28,17 +28,22 @@ function openingPlacement(hit: Hit, sel: string): { keys: number[]; place: Place
   if (n && n[1] === 0) r = n[2] === 1 ? 0 : n[0] === 1 ? 2 : n[2] === -1 ? 4 : 6;
   else r = block(x - 1, z) || block(x + 1, z) ? 0 : 2;       // tapped from above: follow the run of the wall
   // tall pieces line up with the storey: doors stand on its floor, tall windows stay under its top
-  if (h === 2) { const row = y % STOREY; y -= T.door ? row : row === 2 ? 1 : 0; }
+  // Openings line up with the storey, as an architect would draw them: doors and tall windows stand on its floor,
+  // and a small window sits in its middle row, so its sill is at a metre and its head level with the doors.
+  const row = y % STOREY;
+  const wallAt = (yy: number) => { if (yy < 0) return false; const v = voxels.get(K(x, yy, z)); return !!v && (isWall(v.t) || !!T.opening && !!TYPES[v.t].opening); };
+  if (h === 2) { if (T.door || (wallAt(y - row) && wallAt(y - row + 1))) y -= row; else if (row === 2) y -= 1; }
+  else if (sel !== 'winRound' && row !== 1 && wallAt(y - row + 1)) y = y - row + 1;
   const keys: number[] = [];
   for (const c of cellsOf(x, y, z, sel, r)) {
     if (!inB(c[0], c[1], c[2])) return null;
     const k = K(c[0], c[1], c[2]); if (!voxels.has(k)) continue;
     const ak = anchorKey(k), av = TYPES[voxels.get(ak)!.t];
-    if (av.cat !== 'cube' && !av.opening) return null;      // only walls and other openings give way
+    if (av.cat !== 'cube' && av.cat !== 'wall' && !av.opening) return null;      // only walls and other openings give way
     for (const q of pieceKeys(ak)) if (!keys.includes(q)) keys.push(q);
   }
   const w = hit.v, wt = TYPES[w.t];
-  const c = w.c != null ? w.c : wt.cat === 'cube' && w.t !== 'white' ? wt.color : undefined;
+  const c = w.c != null ? w.c : isWall(w.t) && w.t !== 'white' && w.t !== 'wallWhite' ? wt.color : undefined;
   return { keys, place: { x, y, z, t: sel, r, c } };
 }
 function turnPiece(ak: number) {
@@ -89,8 +94,8 @@ function moveTarget(px: number, py: number, ak: number, gx = 0, gz = 0): { cells
     const same = p.x === a[0] && p.y === a[1] && p.z === a[2] && p.r === v.r;
     const op = swapOp([...new Set([...own, ...o.keys])], p);
     if (op) {
-      const fill = Object.keys(TYPES).find(t => TYPES[t].cat === 'cube' && TYPES[t].color === v.c);
-      for (const e of op) if (!e.b && own.includes(e.k)) e.b = fill ? { t: fill, r: 0 } : { t: 'white', r: 0, c: v.c };
+      const w = wallBeside(own) || { t: 'wallWhite', r: 0, c: v.c };
+      for (const e of op) if (!e.b && own.includes(e.k)) e.b = { ...w };
     }
     return { cells, op, same };
   }
@@ -161,6 +166,12 @@ export function tap(px: number, py: number) {
     tool.sel = hit.k; sfx.tick(); say('اخترتِ هذه القطعة. اسحبي إصبعكِ الآن في أي مكان: للأعلى تكبر، وللأسفل تصغر.', 5000);
     return;
   }
+  if (tool.mode === 'room' && tool.room.demolish) {
+    // pulling down a room: a deliberate step of its own, and undo brings it all back
+    const op = hit.ground ? null : demolishOp(hit.k);
+    if (!op) { sfx.no(); say('اضغطي على جدار الغرفة التي تريدين هدمها.', 3000); return; }
+    commit(op); sfx.remove(); say('هدمتِ الغرفة. زر «تراجع» يعيدها كما كانت.', 4000); return;
+  }
   if (tool.mode === 'walk' || tool.mode === 'room' || tool.mode === 'move') return;
   if (tool.mode === 'roof') {
     const op = hit.ground ? null : roofOp(hit.cell[0], hit.cell[1], hit.cell[2], tool.roof.shape, tool.roof.color == null ? undefined : tool.roof.color);
@@ -169,14 +180,29 @@ export function tap(px: number, py: number) {
   }
   if (tool.mode === 'erase') {
     if (hit.ground) return;
-    const keys = pieceKeys(hit.k);
+    const T = TYPES[hit.v.t];
+    if (tool.eraseFloors) {
+      // the floor eraser takes away floors and paths, and nothing else
+      if (!T.flat) { sfx.no(); say('ممحاة الأرضيات تزيل الأرضيات والممرات فقط.', 3000); return; }
+      commit(swapOp([hit.k], null)!); sfx.remove(); return;
+    }
+    // walls, floors and roofs belong to the house: a missed tap must not break it
+    if (isStructure(hit.v.t)) {
+      sfx.no();
+      say(T.flat ? 'الأرضيات لا تُمحى هنا. لإزالتها اختاري «الأرضيات» من الشريط السفلي.' : T.roof ? 'لإزالة السقف اختاري أداة السقف ثم «بلا سقف».' : 'الجدران لا تُمحى. لهدم غرفة اختاري أداة الغرفة ثم «هدم».', 4500);
+      return;
+    }
+    const own = pieceKeys(hit.k), keys = own.slice();
     // anything standing on the removed piece goes with it
     for (const k of keys.slice()) {
       const c = unK(k); if (c[1] + 1 >= H) continue;
       const up = K(c[0], c[1] + 1, c[2]), uv = voxels.get(up);
       if (uv && !isBlock(uv.t)) for (const q of pieceKeys(anchorKey(up))) if (!keys.includes(q)) keys.push(q);
     }
-    commit(swapOp(keys, null)!); sfx.remove(); return;
+    const op = swapOp(keys, null)!;
+    // a window or door leaves its wall whole again
+    if (T.opening) { const w = wallBeside(own); if (w) for (const e of op) if (own.includes(e.k)) e.b = { ...w }; }
+    commit(op); sfx.remove(); return;
   }
   if (tool.mode === 'paint') {
     if (hit.ground) return;
@@ -216,6 +242,8 @@ export function tap(px: number, py: number) {
   }
   const k = K(tg.cell[0], tg.cell[1], tg.cell[2]), old = voxels.get(k) || null;
   if (tg.act === 'turn' && old) { turnPiece(k); return; }
+  // a piece is never put in place of part of the house (a floor is different: the piece stands on it)
+  if (old && isStructure(old.t) && !TYPES[old.t].flat) { sfx.no(); say('هذا جزء من البيت. ضعي القطعة في مكان آخر.', 3000); return; }
   // a block built against the same kind of block continues its direction (a row of roof pieces)
   let r = !hit.ground && hit.v.t === selected ? hit.v.r : 0;
   if (turnStep(selected) === 2) r &= 6;
@@ -280,9 +308,13 @@ const ptrs = new Map<number, Ptr>(); let gest: Gest | null = null;
 
 function hover(px: number, py: number) {
   const hit = pick(px, py); ghost.visible = false; ghost.scale.set(1, 1, 1);
-  if (!hit || tool.mode === 'walk' || tool.mode === 'room') return;
+  if (!hit || tool.mode === 'walk' || (tool.mode === 'room' && !tool.room.demolish)) return;
   let c: number[] | null = null;
-  if (tool.mode === 'erase') { if (!hit.ground) c = hit.cell; ghost.material.color.set(0xff4d6d); }
+  if (tool.mode === 'erase' || tool.mode === 'room') {
+    // red over what would go; nothing over what the eraser leaves alone
+    if (!hit.ground && (tool.mode === 'room' || (tool.eraseFloors ? !!TYPES[hit.v.t].flat : !isStructure(hit.v.t)))) c = hit.cell;
+    ghost.material.color.set(0xff4d6d);
+  }
   else if (tool.mode === 'paint' || tool.mode === 'turn' || tool.mode === 'move' || tool.mode === 'size' || tool.mode === 'roof') { if (!hit.ground) c = hit.cell; ghost.material.color.set(0xffffff); }
   else if (TYPES[tool.selected].opening && !hit.ground && isBlock(hit.v.t)) { c = hit.cell; ghost.material.color.set(0xffffff); }
   else { const tg = targetFor(hit, tool.selected); if (tg && 'cell' in tg) c = tg.cell; ghost.material.color.set(0xffffff); }
@@ -318,7 +350,7 @@ export function initInput() {
         if (view.fp) gest = { type: 'look', moved: false };
         else { gest = { type: 'walk' }; setFinger(e.clientX, e.clientY); }
       }
-      else if (tool.mode === 'room' && e.button !== 2 && !e.shiftKey) {
+      else if (tool.mode === 'room' && !tool.room.demolish && e.button !== 2 && !e.shiftKey) {
         // with the room tool, a drag across the ground draws the room
         const c = groundCell(e.clientX, e.clientY, false);
         if (c) { gest = { type: 'room', x0: c[0], z0: c[1], x1: c[0], z1: c[1] }; setRoomPreview(sorted(gest)); } else gest = { type: 'done' };
@@ -326,7 +358,7 @@ export function initInput() {
       else if (tool.mode === 'move' && e.button !== 2 && !e.shiftKey) {
         // with the move tool, a finger on a piece picks it up; on empty ground it turns the view as usual
         const hit = pick(e.clientX, e.clientY);
-        if (hit && !hit.ground) {
+        if (hit && !hit.ground && !isStructure(hit.v.t)) {
           // remember where on the piece the finger took hold, so it does not jump when the drag begins
           const a = unK(hit.k), o = hit.v.o, p = isLoose(hit.v.t) ? planePoint(e.clientX, e.clientY, a[1]) : null;
           gest = { type: 'move', k: hit.k, moved: false, gx: p ? a[0] + .5 + (o ? o[0] : 0) - p[0] : 0, gz: p ? a[2] + .5 + (o ? o[1] : 0) - p[1] : 0 };

@@ -1,6 +1,7 @@
 import { TYPES, isBlock } from './types';
 
-export const N = 32, H = 10;
+// H: room for three storeys of three metres and a roof over them
+export const N = 32, H = 16;
 // the starter garden keeps its original 20×20 size, in the middle of the land
 export const G = 20, OFF = (N - G) / 2;
 
@@ -14,8 +15,12 @@ export interface Voxel { t: string; r: number; c?: number; of?: number; f?: stri
 export type Entry = [number, number, number, string, number, (number | null)?, number?, number?, number?];
 export const SIZE_MIN = .4, SIZE_MAX = 2.5;
 // every piece can change size except what a building is made of: cubes and walls, windows and doors, floors, roofs and stairs
-export const isSizable = (t: string) => { const T = TYPES[t]; return T.cat !== 'cube' && !T.opening && !T.door && !T.flat && !T.roof && t !== 'floorSlab' && t !== 'stairs'; };
+export const isSizable = (t: string) => { const T = TYPES[t]; return T.cat !== 'cube' && T.cat !== 'wall' && !T.opening && !T.door && !T.flat && !T.roof && t !== 'floorSlab' && t !== 'stairs'; };
 // loose pieces stand anywhere on the floor; walls, floors, openings, fences and wall-hung pieces stay on the grid
+// what a building is made of: walls laid by the room tool, floors and paths, upper floors and roofs. The eraser leaves these alone.
+export const isStructure = (t: string) => { const T = TYPES[t]; return T.cat === 'wall' || !!T.flat || !!T.roof || t === 'floorSlab'; };
+// a wall a window or door can be opened in: a cube, or a wall laid by the room tool
+export const isWall = (t: string) => TYPES[t].cat === 'cube' || TYPES[t].cat === 'wall';
 export const isLoose = (t: string) => { const T = TYPES[t]; return !isBlock(t) && !T.flat && !T.opening && !T.door && !T.thin && t !== 'fence'; };
 export interface Edit { k: number; a: Voxel | null; b: Voxel | null }
 export type Op = Edit[];
@@ -113,7 +118,7 @@ function build(list: Entry[]): Map<number, Voxel> {
     if (typeof e[8] === 'number' && e[8] > 0 && isSizable(v.t)) v.s = Math.max(SIZE_MIN, Math.min(SIZE_MAX, e[8]));
     const cells = cellsOf(e[0], e[1], e[2], v.t, v.r), ak = K(e[0], e[1], e[2]);
     const over = opening(e);
-    if (cells.some(c => { if (!inB(c[0], c[1], c[2])) return true; const o = m.get(K(c[0], c[1], c[2])); return !!o && !(over && TYPES[o.t].cat === 'cube'); })) return;
+    if (cells.some(c => { if (!inB(c[0], c[1], c[2])) return true; const o = m.get(K(c[0], c[1], c[2])); return !!o && !(over && (TYPES[o.t].cat === 'cube' || TYPES[o.t].cat === 'wall')); })) return;
     cells.forEach((c, i) => m.set(K(c[0], c[1], c[2]), i ? { ...v, of: ak } : v));
   });
   return m;
@@ -217,6 +222,12 @@ export function roofOp(cx: number, cy: number, cz: number, shape: RoofShape, col
     const k = K(x, y, z), v = voxels.get(k);
     if (v && TYPES[v.t].roof) for (const q of pieceKeys(anchorKey(k))) if (!m.has(q)) m.set(q, { k: q, a: voxels.get(q)!, b: null });
   }
+  // and its eaves, in the ring of cells just outside the walls
+  for (let x = x0 - 1; x <= x1 + 1; x++) for (let z = z0 - 1; z <= z1 + 1; z++) {
+    if (inR(x, z) || !inB(x, top, z)) continue;
+    const k = K(x, top, z), v = voxels.get(k);
+    if (v && (v.t === 'eave' || v.t === 'eaveCorner') && !m.has(k)) m.set(k, { k, a: v, b: null });
+  }
   const put = (x: number, y: number, z: number, t: string, r: number, c?: number) => {
     if (!inB(x, y, z)) return;
     const k = K(x, y, z), e = m.get(k), b: Voxel = { t, r, c };
@@ -226,7 +237,7 @@ export function roofOp(cx: number, cy: number, cz: number, shape: RoofShape, col
   if (shape !== 'none' && maxL < 1) return null;
   // the gable wall takes the colour of the wall it stands on
   const wv = voxels.get(anchorKey(K(cx, top, cz)))!, wt = TYPES[wv.t];
-  const wallC = wv.c != null ? wv.c : wt.cat === 'cube' && wv.t !== 'white' ? wt.color : undefined;
+  const wallC = wv.c != null ? wv.c : (wt.cat === 'cube' || wt.cat === 'wall') && wv.t !== 'white' && wv.t !== 'wallWhite' ? wt.color : undefined;
 
   if (shape === 'flat') {
     for (const [x, z] of R) {
@@ -285,7 +296,82 @@ export function roofOp(cx: number, cy: number, cz: number, shape: RoofShape, col
         if (v) put(x, y, z, 'roofValley', diagonal(v[0], v[1]), color); else put(x, y, z, 'roofFlat', 0, color);
       }
     }
+    // eaves on the sides the roof comes down to, and round the corners of a hipped roof
+    const eave = (x: number, z: number, t: string, r: number) => { if (inB(x, top, z) && !inR(x, z)) put(x, top, z, t, r, color); };
+    const downs: [number, number][] = shape === 'hip' ? [[1, 0], [-1, 0], [0, 1], [0, -1]] : shape === 'gable' ? [[ax[0], ax[1]], [-ax[0], -ax[1]]] : [[-ax[0], -ax[1]]];
+    for (const [x, z] of R) {
+      for (const [dx, dz] of downs) eave(x + dx, z + dz, 'eave', facing(dx, dz));
+      if (shape === 'hip') for (const [sx, sz] of [[1, 1], [1, -1], [-1, 1], [-1, -1]])
+        if (!inR(x + sx, z) && !inR(x, z + sz)) eave(x + sx, z + sz, 'eaveCorner', diagonal(sx, sz));
+    }
   }
   const op = [...m.values()];
   return op.length ? op : null;
+}
+
+/* ---------- the house as a whole ---------- */
+// The wall a window or door sits in: the first wall piece beside its cells. It closes the gap when the window goes.
+export function wallBeside(keys: number[]): Voxel | null {
+  let cube: Voxel | null = null;
+  for (const k of keys) {
+    const c = unK(k);
+    for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+      const x = c[0] + dx, z = c[2] + dz; if (!inB(x, c[1], z)) continue;
+      const q = K(x, c[1], z); if (keys.includes(q)) continue;
+      const v = voxels.get(q); if (!v) continue;
+      if (TYPES[v.t].cat === 'wall') return { t: v.t, r: 0, c: v.c };
+      if (!cube && TYPES[v.t].cat === 'cube') cube = { t: v.t, r: 0, c: v.c };
+    }
+  }
+  return cube;
+}
+// Pull down the building at cell k: its walls, windows and doors, upper floors, roof and eaves, and the floors inside it.
+// Furniture, cubes and everything else stay where they are. One undoable step; null when k is not part of a building.
+export function demolishOp(k: number): Op | null {
+  const part = (v: Voxel | undefined) => !!v && (TYPES[v.t].cat === 'wall' || !!TYPES[v.t].opening || !!TYPES[v.t].roof || v.t === 'floorSlab');
+  let start = k;
+  const sv = voxels.get(k);
+  if (sv && TYPES[sv.t].flat) {
+    // a floor was tapped: start from the nearest wall on the same level
+    const c = unK(k); start = -1;
+    for (let d = 1; d < N && start < 0; d++) for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+      const x = c[0] + dx * d, z = c[2] + dz * d; if (!inB(x, c[1], z)) continue;
+      const q = K(x, c[1], z); if (part(voxels.get(q))) { start = q; break; }
+    }
+    if (start < 0) return null;
+  }
+  if (!part(voxels.get(start))) return null;
+  // everything of the building that hangs together with the tapped piece
+  const seen = new Set<number>(), todo: number[] = [];
+  const add = (q: number) => { for (const p of pieceKeys(anchorKey(q))) if (!seen.has(p)) { seen.add(p); todo.push(p); } };
+  add(start);
+  while (todo.length && seen.size < 8000) {
+    const c = unK(todo.pop()!);
+    for (let i = -1; i <= 1; i++) for (let j = -1; j <= 1; j++) for (let l = -1; l <= 1; l++) {
+      const x = c[0] + i, y = c[1] + j, z = c[2] + l; if (!inB(x, y, z)) continue;
+      const q = K(x, y, z); if (!seen.has(q) && part(voxels.get(q))) add(q);
+    }
+  }
+  const m = new Map<number, Edit>();
+  seen.forEach(q => m.set(q, { k: q, a: voxels.get(q)!, b: null }));
+  // the floors inside it, on every level its walls stand on
+  let x0 = N, x1 = -1, z0 = N, z1 = -1, y0 = H, y1 = -1;
+  seen.forEach(q => { if (TYPES[voxels.get(q)!.t].roof) return; const c = unK(q); x0 = Math.min(x0, c[0]); x1 = Math.max(x1, c[0]); z0 = Math.min(z0, c[2]); z1 = Math.max(z1, c[2]); y0 = Math.min(y0, c[1]); y1 = Math.max(y1, c[1]); });
+  for (let y = y0; y <= y1; y++) {
+    // inside: what a walk from outside the walls on this level cannot reach
+    const wall = (x: number, z: number) => inB(x, y, z) && seen.has(K(x, y, z));
+    const outside = new Set<number>(), go: [number, number][] = [[x0 - 1, z0 - 1]];
+    while (go.length) {
+      const [x, z] = go.pop()!, id = (x + 2) + 100 * (z + 2);
+      if (x < x0 - 1 || x > x1 + 1 || z < z0 - 1 || z > z1 + 1 || outside.has(id) || wall(x, z)) continue;
+      outside.add(id); go.push([x + 1, z], [x - 1, z], [x, z + 1], [x, z - 1]);
+    }
+    for (let x = x0; x <= x1; x++) for (let z = z0; z <= z1; z++) {
+      if (outside.has((x + 2) + 100 * (z + 2)) || wall(x, z)) continue;
+      const q = K(x, y, z), v = voxels.get(q); if (!v || m.has(q)) continue;
+      if (TYPES[v.t].flat && v.of == null) m.set(q, { k: q, a: v, b: null });
+      else if (v.f) m.set(q, { k: q, a: v, b: { ...v, f: undefined } });   // the floor under a piece of furniture goes; the furniture stays
+    }
+  }
+  return m.size ? [...m.values()] : null;
 }

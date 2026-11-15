@@ -6,13 +6,13 @@ import { world, baseMat, canvas, reduceMotion } from './render';
 import { planePoint } from './pick';
 import { cam, tool } from './input';
 
-/* ---------- the walking character: a girl about a cell and a half tall, facing +z ----------
-   A cell is about one metre: a storey is three cells, a door two, and she stands 1.5 high. */
+/* ---------- the walking character: a girl of eight or nine, facing +z ----------
+   A cell is a metre: a storey is three cells and a door two. She stands 1.35 m tall, her eyes at 1.24. */
 const SKIN = 0xf2c9a0, HAIR = 0x5a3a22, DRESS = 0xe2477f, DRESS2 = 0xc93a6e, SHOE = 0x6a3fa6, DARK = 0x2b2140;
 const SPEED = 3.4;  // cells per second
-const R = .3;       // half her width, for bumping into things
-const S = 1.85;     // the model is drawn one cell tall and shown at this scale
-const EYE = 1.38;   // her eyes above the floor she stands on
+const R = .27;      // half her width, for bumping into things
+const S = 1.65;     // the model is drawn .82 tall and shown at this scale
+const EYE = 1.24;   // her eyes above the floor she stands on
 
 // a limb that swings around a pivot at height pivotY above the cell floor
 function limb(parts: THREE.BufferGeometry[], pivotY: number) {

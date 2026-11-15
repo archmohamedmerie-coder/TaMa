@@ -34,7 +34,8 @@ export function pick(px: number, py: number): Hit | null {
   for (let n = 0; n < 200; n++) {
     const k = K(cell[0], cell[1], cell[2]), v = voxels.get(k);
     // hidden roofs let the tap through to the rooms below
-    if (v && !(view.hideRoofs && TYPES[v.t].roof) && !view.hidden.has(anchorKey(k))) { const nrm = [0, 0, 0]; if (axis >= 0) nrm[axis] = -step[axis]; const ak = anchorKey(k); return { cell: cell.slice(), k: ak, v: voxels.get(ak) || v, normal: axis >= 0 ? nrm : null }; }
+    // eaves hang over the walls; taps go through them to the wall behind
+    if (v && v.t !== 'eave' && v.t !== 'eaveCorner' && !(view.hideRoofs && TYPES[v.t].roof) && !view.hidden.has(anchorKey(k))) { const nrm = [0, 0, 0]; if (axis >= 0) nrm[axis] = -step[axis]; const ak = anchorKey(k); return { cell: cell.slice(), k: ak, v: voxels.get(ak) || v, normal: axis >= 0 ? nrm : null }; }
     axis = tMax[0] < tMax[1] ? (tMax[0] < tMax[2] ? 0 : 2) : (tMax[1] < tMax[2] ? 1 : 2);
     const prev = cell.slice();
     cell[axis] += step[axis]; tMax[axis] += tDelta[axis];

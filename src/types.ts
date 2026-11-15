@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 
-export type Cat = 'cube' | 'flower' | 'decor' | 'open' | 'house' | 'furniture' | 'bath' | 'light' | 'animal' | 'street';
+export type Cat = 'cube' | 'wall' | 'flower' | 'decor' | 'open' | 'house' | 'furniture' | 'bath' | 'light' | 'animal' | 'street';
 export interface PieceType {
   name: string;
   cat: Cat;
@@ -102,10 +102,10 @@ const pane = (x0: number, x1: number, y0: number, y1: number) => M([b(x1 - x0, y
 const barV = (x: number, y0: number, y1: number) => b(.05, y1 - y0, .07, WHITE, x, y0, 0);
 const barH = (x0: number, x1: number, y: number) => b(x1 - x0, .05, .07, WHITE, (x0 + x1) / 2, y - .025, 0);
 // a panelled door leaf centred on xc; the knob sits on the side given by knob (1 or -1)
-const leaf = (xc: number, wd: number, knob: number, col = DOORWOOD, col2 = DOORWOOD2) => M([b(wd, 1.78, .08, col, xc, 0, 0),
-  b(wd - .24, .6, .1, col2, xc, 1, 0), b(wd - .24, .6, .1, col2, xc, .2, 0), b(.06, .06, .14, 0xffd24a, xc + knob * (wd / 2 - .11), .85, 0)]);
-const barnLeaf = (xc: number) => M([b(.89, 1.83, .08, 0xb5382f, xc, 0, 0), b(.89, .1, .1, WHITE, xc, 0, 0), b(.89, .1, .1, WHITE, xc, 1.73, 0), b(.89, .1, .1, WHITE, xc, .87, 0),
-  b(.1, 1.83, .1, WHITE, xc - .395, 0, 0), b(.1, 1.83, .1, WHITE, xc + .395, 0, 0)]);
+const leaf = (xc: number, wd: number, knob: number, col = DOORWOOD, col2 = DOORWOOD2) => M([b(wd, 1.96, .08, col, xc, 0, 0),
+  b(wd - .24, .66, .1, col2, xc, 1.1, 0), b(wd - .24, .66, .1, col2, xc, .22, 0), b(.06, .06, .14, 0xffd24a, xc + knob * (wd / 2 - .11), .98, 0)]);
+const barnLeaf = (xc: number) => M([b(.89, 1.97, .08, 0xb5382f, xc, 0, 0), b(.89, .1, .1, WHITE, xc, 0, 0), b(.89, .1, .1, WHITE, xc, 1.87, 0), b(.89, .1, .1, WHITE, xc, .94, 0),
+  b(.1, 1.97, .1, WHITE, xc - .395, 0, 0), b(.1, 1.97, .1, WHITE, xc + .395, 0, 0)]);
 
 /* ---------- smooth roof pieces ---------- */
 // A faceted solid from corner points (heights measured from the cell floor) and faces listed by point index.
@@ -175,27 +175,27 @@ export const TYPES: Record<string, PieceType> = {
   /* ---------- windows: tap a wall to open one in it ---------- */
   window: { name: 'نافذة مربعة', cat: 'open', solid: true, opening: true, keep: [WHITE], geo: () => M([...holed(1, 1, -.38, .38, .1, .9), ...trim(-.38, .38, .1, .9), barV(0, .1, .9), barH(-.38, .38, .5)]), glass: () => pane(-.38, .38, .1, .9) },
   winWide: { name: 'نافذة عريضة', cat: 'open', solid: true, opening: true, size: [2, 1, 1], keep: [WHITE], geo: () => M([...holed(2, 1, -.38, 1.38, .1, .9), ...trim(-.38, 1.38, .1, .9), barV(.5, .1, .9)]), glass: () => pane(-.38, 1.38, .1, .9) },
-  winTall: { name: 'نافذة طويلة', cat: 'open', solid: true, opening: true, size: [1, 2, 1], keep: [WHITE], geo: () => M([...holed(1, 2, -.38, .38, .6, 1.88), ...trim(-.38, .38, .6, 1.88), barH(-.38, .38, 1.24)]), glass: () => pane(-.38, .38, .6, 1.88) },
-  winArch: { name: 'نافذة مقوّسة', cat: 'open', solid: true, opening: true, size: [1, 2, 1], keep: [WHITE], geo: () => M([...holed(1, 2, -.38, .38, .6, 1.9), ...arch(-.38, .38, .6, 1.9), barV(0, .6, 1.9), barH(-.38, .38, 1.45)]), glass: () => pane(-.38, .38, .6, 1.9) },
+  winTall: { name: 'نافذة طويلة', cat: 'open', solid: true, opening: true, size: [1, 2, 1], keep: [WHITE], geo: () => M([...holed(1, 2, -.38, .38, .5, 1.95), ...trim(-.38, .38, .5, 1.95), barH(-.38, .38, 1.22)]), glass: () => pane(-.38, .38, .5, 1.95) },
+  winArch: { name: 'نافذة مقوّسة', cat: 'open', solid: true, opening: true, size: [1, 2, 1], keep: [WHITE], geo: () => M([...holed(1, 2, -.38, .38, .5, 1.98), ...arch(-.38, .38, .5, 1.98), barV(0, .5, 1.98), barH(-.38, .38, 1.5)]), glass: () => pane(-.38, .38, .5, 1.98) },
   winRound: { name: 'نافذة دائرية', cat: 'open', solid: true, opening: true, keep: [WHITE], geo: () => M([...holed(1, 1, -.34, .34, .16, .84), ...arch(-.34, .34, .16, .84, true), barV(0, .16, .84), barH(-.34, .34, .5)]), glass: () => pane(-.34, .34, .16, .84) },
   winShutter: { name: 'نافذة بمصاريع', cat: 'open', solid: true, opening: true, keep: [WHITE, 0x3f9b4b, 0x2f7d3a], geo: () => M([...holed(1, 1, -.26, .26, .1, .9), ...trim(-.26, .26, .1, .9), barH(-.26, .26, .5),
     b(.2, .82, .05, 0x3f9b4b, .37, .09, .52), b(.2, .82, .05, 0x3f9b4b, -.37, .09, .52), ...[.25, .48, .71].flatMap(y => [b(.15, .03, .06, 0x2f7d3a, .37, y, .525), b(.15, .03, .06, 0x2f7d3a, -.37, y, .525)])]), glass: () => pane(-.2, .2, .2, .8) },
-  winBig: { name: 'نافذة كبيرة', cat: 'open', solid: true, opening: true, size: [2, 2, 1], keep: [WHITE], geo: () => M([...holed(2, 2, -.38, 1.38, .6, 1.88), ...trim(-.38, 1.38, .6, 1.88), barV(.5, .6, 1.88), barH(-.38, 1.38, 1.24)]), glass: () => pane(-.38, 1.38, .6, 1.88) },
+  winBig: { name: 'نافذة كبيرة', cat: 'open', solid: true, opening: true, size: [2, 2, 1], keep: [WHITE], geo: () => M([...holed(2, 2, -.38, 1.38, .7, 1.95), ...trim(-.38, 1.38, .7, 1.95), barV(.5, .7, 1.95), barH(-.38, 1.38, 1.3)]), glass: () => pane(-.38, 1.38, .7, 1.95) },
 
   /* ---------- doors: two cells high, they open when the girl comes near ---------- */
-  door: { name: 'باب خشبي', cat: 'open', solid: true, opening: true, door: true, size: [1, 2, 1], keep: [WHITE], geo: () => M([...holed(1, 2, -.38, .38, 0, 1.8), ...trim(-.38, .38, 0, 1.8)]),
+  door: { name: 'باب خشبي', cat: 'open', solid: true, opening: true, door: true, size: [1, 2, 1], keep: [WHITE], geo: () => M([...holed(1, 2, -.38, .38, 0, 1.98), ...trim(-.38, .38, 0, 1.98)]),
     leaves: [{ geo: () => leaf(0, .74, 1), hinge: [-.37, 0], dir: 1 }] },
-  doorGlass: { name: 'باب زجاجي', cat: 'open', solid: true, opening: true, door: true, size: [1, 2, 1], keep: [WHITE], geo: () => M([...holed(1, 2, -.38, .38, 0, 1.8), ...trim(-.38, .38, 0, 1.8)]),
-    leaves: [{ geo: () => M([b(.1, 1.78, .08, WHITE, .32, 0, 0), b(.1, 1.78, .08, WHITE, -.32, 0, 0), b(.54, .14, .08, WHITE, 0, 0, 0), b(.54, .14, .08, WHITE, 0, 1.64, 0), b(.54, .06, .08, WHITE, 0, .86, 0), b(.04, .2, .14, 0x8c8c99, .3, .8, 0)]), hinge: [-.37, 0], dir: 1 },
-      { geo: () => M([b(.54, 1.5, .03, GLASS, 0, .14, 0)]), glass: true, hinge: [-.37, 0], dir: 1 }] },
-  doorDouble: { name: 'باب مزدوج', cat: 'open', solid: true, opening: true, door: true, size: [2, 2, 1], keep: [WHITE], geo: () => M([...holed(2, 2, -.3, 1.3, 0, 1.8), ...trim(-.3, 1.3, 0, 1.8)]),
+  doorGlass: { name: 'باب زجاجي', cat: 'open', solid: true, opening: true, door: true, size: [1, 2, 1], keep: [WHITE], geo: () => M([...holed(1, 2, -.38, .38, 0, 1.98), ...trim(-.38, .38, 0, 1.98)]),
+    leaves: [{ geo: () => M([b(.1, 1.96, .08, WHITE, .32, 0, 0), b(.1, 1.96, .08, WHITE, -.32, 0, 0), b(.54, .14, .08, WHITE, 0, 0, 0), b(.54, .14, .08, WHITE, 0, 1.82, 0), b(.54, .06, .08, WHITE, 0, .95, 0), b(.04, .2, .14, 0x8c8c99, .3, .9, 0)]), hinge: [-.37, 0], dir: 1 },
+      { geo: () => M([b(.54, 1.68, .03, GLASS, 0, .14, 0)]), glass: true, hinge: [-.37, 0], dir: 1 }] },
+  doorDouble: { name: 'باب مزدوج', cat: 'open', solid: true, opening: true, door: true, size: [2, 2, 1], keep: [WHITE], geo: () => M([...holed(2, 2, -.3, 1.3, 0, 1.98), ...trim(-.3, 1.3, 0, 1.98)]),
     leaves: [{ geo: () => leaf(.1, .78, 1), hinge: [-.29, 0], dir: 1 }, { geo: () => leaf(.9, .78, -1), hinge: [1.29, 0], dir: -1 }] },
-  doorArch: { name: 'باب مقوّس', cat: 'open', solid: true, opening: true, door: true, size: [1, 2, 1], keep: [WHITE], geo: () => M([...holed(1, 2, -.38, .38, 0, 1.85), ...arch(-.38, .38, 0, 1.85)]),
+  doorArch: { name: 'باب مقوّس', cat: 'open', solid: true, opening: true, door: true, size: [1, 2, 1], keep: [WHITE], geo: () => M([...holed(1, 2, -.38, .38, 0, 2), ...arch(-.38, .38, 0, 2)]),
     leaves: [{ geo: () => leaf(0, .74, 1, 0x2f8f83, 0x3fa99b), hinge: [-.37, 0], dir: 1 }] },
-  barnDoor: { name: 'باب حظيرة', cat: 'open', solid: true, opening: true, door: true, size: [2, 2, 1], keep: [WHITE], geo: () => M(holed(2, 2, -.4, 1.4, 0, 1.85)),
+  barnDoor: { name: 'باب حظيرة', cat: 'open', solid: true, opening: true, door: true, size: [2, 2, 1], keep: [WHITE], geo: () => M(holed(2, 2, -.4, 1.4, 0, 2)),
     leaves: [{ geo: () => barnLeaf(.05), hinge: [-.4, 0], dir: 1 }, { geo: () => barnLeaf(.95), hinge: [1.4, 0], dir: -1 }] },
-  garageDoor: { name: 'باب موقف', cat: 'open', solid: true, opening: true, door: true, size: [2, 2, 1], keep: [WHITE], geo: () => M(holed(2, 2, -.4, 1.4, 0, 1.75)),
-    leaves: [{ geo: () => M([b(1.78, 1.73, .08, 0xdfe3e8, .5, 0, 0), ...[.43, .86, 1.3].map(y => b(1.78, .03, .1, 0xaab2bd, .5, y, 0))]), top: 1.75 }] },
+  garageDoor: { name: 'باب موقف', cat: 'open', solid: true, opening: true, door: true, size: [2, 2, 1], keep: [WHITE], geo: () => M(holed(2, 2, -.4, 1.4, 0, 1.98)),
+    leaves: [{ geo: () => M([b(1.78, 1.96, .08, 0xdfe3e8, .5, 0, 0), ...[.49, .98, 1.47].map(y => b(1.78, .03, .1, 0xaab2bd, .5, y, 0))]), top: 1.98 }] },
   gate: { name: 'باب حديقة', cat: 'open', door: true, geo: () => M([b(.1, .7, .1, 0xfbf7ef, .45, 0, 0), b(.1, .7, .1, 0xfbf7ef, -.45, 0, 0)]),
     leaves: [{ geo: () => M([...[-.3, -.15, 0, .15, .3].map(x => b(.1, .5, .06, 0xfbf7ef, x, .04, 0)), b(.8, .06, .05, 0xffffff, 0, .14, 0), b(.8, .06, .05, 0xffffff, 0, .38, 0)]), hinge: [-.4, 0], dir: 1 }] },
 
@@ -390,7 +390,7 @@ export function fenceGeo(mask: number): Geo {
     for (const d of [.2, .4]) parts.push(sx ? b(.1, .56, .07, 0xfbf7ef, sx * d, 0, 0) : b(.07, .56, .1, 0xfbf7ef, 0, 0, sz * d));
   };
   if (mask & 1) arm(1, 0); if (mask & 2) arm(-1, 0); if (mask & 4) arm(0, 1); if (mask & 8) arm(0, -1);
-  return stretch(M(parts), 1, 1.25, 1);
+  return stretch(M(parts), 1, 1.6, 1);
 }
 for (const t of ['bunny', 'cow', 'sheep', 'chicken', 'duck', 'horse', 'cat', 'dog']) TYPES[t].alive = true;
 export const CATS: [Cat, string][] = [['flower', 'زهور'], ['cube', 'مكعبات'], ['open', 'فتحات'], ['house', 'بيت'], ['furniture', 'أثاث'], ['bath', 'حمّام'], ['light', 'إنارة'], ['decor', 'حديقة'], ['animal', 'مزرعة'], ['street', 'شارع']];
@@ -413,21 +413,50 @@ function fit(t: string, sx: number, sy = sx, sz = sx, lift = 0) {
   if (gl) T.glass = () => stretch(gl(), sx, sy, sz, lift);
   if (T.leaves) T.leaves = T.leaves.map(l => { const lg = l.geo; return { ...l, geo: () => stretch(lg(), sx, sy, sz, lift) }; });
 }
-// taller
-for (const [t, sy] of [['wardrobe', 1.35], ['bookshelf', 1.35], ['fridge', 1.18], ['lamp', 1.25], ['tripodLamp', 1.15], ['lantern', 1.15], ['streetLamp', 1.4], ['sign', 1.35],
-  ['railing', 1.3], ['fence', 1.25], ['gate', 1.2], ['bench', 1.3], ['shower', 1.12], ['table', 1.25], ['desk', 1.2], ['tv', 1.3], ['stove', 1.13], ['sink', 1.13], ['counter', 1.13], ['basin', 1.12], ['picnic', 1.2], ['sunflower', 1.4], ['swing', 1.4], ['slide', 1.35], ['well', 1.2], ['mailbox', 1.2]] as [string, number][]) fit(t, 1, sy, 1);
-// bigger all round
-for (const [t, s] of [['cow', 1.3], ['horse', 1.3], ['sheep', 1.15], ['chicken', .8], ['bunny', .8], ['bike', 1.2], ['plant', 1.2], ['chair', 1.2], ['toilet', 1.15], ['cat', .8]] as [string, number][]) fit(t, s);
-// hung higher on the wall
+// Real sizes, in metres: one cell is a metre and a storey is three, so a piece drawn small is stretched to its true size.
+// Taller: a table at 75 cm, a kitchen worktop at 90, a wardrobe 2 m, a bookcase 1.9, a fridge 1.8, a floor lamp 1.6,
+// a street lamp 4 m, a railing 95 cm, a garden fence 90 cm.
+for (const [t, sy] of [['wardrobe', 1.54], ['bookshelf', 1.58], ['fridge', 1.29], ['lamp', 1.38], ['tripodLamp', 1.15], ['lantern', 1.15], ['streetLamp', 2.15], ['sign', 1.5],
+  ['railing', 1.44], ['fence', 1.6], ['gate', 1.35], ['bench', 1.3], ['shower', 1.18], ['table', 1.34], ['desk', 1.27], ['tv', 1.3], ['stove', 1.2], ['sink', 1.2], ['counter', 1.2], ['basin', 1.12],
+  ['picnic', 1.34], ['sunflower', 1.8], ['swing', 1.56], ['slide', 1.35], ['well', 1.2], ['mailbox', 1.2]] as [string, number][]) fit(t, 1, sy, 1);
+// Bigger or smaller all round: a chair seat at 45 cm, a bush near a metre, a bicycle wheel 65 cm, a cat 30 cm at the shoulder.
+for (const [t, s] of [['sheep', 1.15], ['chicken', .8], ['bunny', .58], ['bike', 1.6], ['plant', 1.2], ['chair', 1.3], ['toilet', 1.15], ['cat', .62], ['bush', 1.4]] as [string, number][]) fit(t, s);
+// hung at eye level on the wall
 for (const [t, up] of [['wallLamp', .35], ['wallBar', .25], ['sconce', .3], ['clock', .4], ['painting', .35], ['shelf', .3], ['mirror', .25]] as [string, number][]) fit(t, 1, 1, 1, up);
-// trees stand three cells tall and take that room
-for (const t of ['tree', 'blossom']) { fit(t, 1.55); TYPES[t].size = [1, 3, 1]; }
-// a car is two cells wide, three long and higher than one cell
+// a garden tree about four metres tall, which takes that room
+for (const t of ['tree', 'blossom']) { fit(t, 2); TYPES[t].size = [1, 4, 1]; }
+// a cow (1.5 m at the shoulder) and a horse (2 m to the ears) are two cells long
+for (const [t, s] of [['cow', 1.7], ['horse', 1.65]] as [string, number][]) {
+  const g0 = TYPES[t].geo;
+  TYPES[t].geo = () => { const g = stretch(g0(), s, s, s); g.translate(0, 0, .5); g.computeBoundingBox(); g.computeBoundingSphere(); return g; };
+  TYPES[t].size = [1, 2, 2];
+}
+// a car 1.8 m wide, 4.2 long and 1.45 high
 {
   const g0 = TYPES.car.geo;
-  TYPES.car.geo = () => { const g = g0(); g.translate(0, .5, -.5); g.scale(1.75, 1.7, 1.75); g.translate(.5, -.5, 1); g.computeBoundingBox(); g.computeBoundingSphere(); return g; };
-  TYPES.car.size = [2, 2, 3];
+  TYPES.car.geo = () => { const g = g0(); g.translate(0, .5, -.5); g.scale(2.25, 1.88, 2.44); g.translate(.5, -.5, 1.5); g.computeBoundingBox(); g.computeBoundingSphere(); return g; };
+  TYPES.car.size = [2, 2, 4];
 }
+
+/* ---------- walls laid by the room tool ----------
+   They look like cubes but belong to the house: the eraser leaves them alone, and only pulling down the whole room takes them away. */
+for (const [t, w] of [['white', 'wallWhite'], ['brick', 'wallBrick'], ['wood', 'wallWood'], ['stone', 'wallStone'], ['barn', 'wallBarn']])
+  TYPES[w] = { name: TYPES[t].name, cat: 'wall', solid: true, hidden: true, color: TYPES[t].color, geo: TYPES[t].geo };
+
+/* ---------- eaves: the roof reaches half a metre past the walls ----------
+   Roofing on top and a white board underneath. Given turned to r = 0: the wall is on the -z side (and the -x side for a corner),
+   and the roof line carries on down from the top of the wall at the slope of the roof. */
+function eaveGeo(corner: boolean): Geo {
+  const top = corner ? [[-.5, 1, -.5], [0, .5, -.5], [0, .5, 0], [-.5, .5, 0]] : [[-.5, 1, -.5], [.5, 1, -.5], [.5, .5, 0], [-.5, .5, 0]];
+  const faces = corner ? [[0, 1, 2], [0, 2, 3], [4, 5, 6], [4, 6, 7], [0, 1, 5, 4], [1, 2, 6, 5], [2, 3, 7, 6], [3, 0, 4, 7]]
+    : [[0, 1, 2, 3], [4, 5, 6, 7], [0, 1, 5, 4], [1, 2, 6, 5], [2, 3, 7, 6], [3, 0, 4, 7]];
+  const layer = (dy: number, th: number, col: number) => solid(col, [...top.map(p => [p[0], p[1] - dy, p[2]]), ...top.map(p => [p[0], p[1] - dy - th, p[2]])], faces,
+    [corner ? -.25 : 0, .75 - dy - th / 2, -.25]);
+  return M([layer(0, .1, ROOF), layer(.1, .04, WHITE)]);
+}
+TYPES.eave = { name: 'طرف سقف', cat: 'house', thin: true, roof: true, hidden: true, keep: [WHITE], geo: () => eaveGeo(false) };
+TYPES.eaveCorner = { name: 'زاوية طرف السقف', cat: 'house', thin: true, roof: true, hidden: true, keep: [WHITE], geo: () => eaveGeo(true) };
+
 // a block fills its cell: cubes and solid house parts
 export const isBlock = (t: string) => TYPES[t].cat === 'cube' || !!TYPES[t].solid;
 export const isFlower = (t: string) => TYPES[t].cat === 'flower';

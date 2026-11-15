@@ -45,7 +45,7 @@ const PAINTS: [string, number | null][] = [['الأصلي', null], ['أحمر', 
   ['أزرق', 0x3a66d6], ['بنفسجي', 0x9b6fd6], ['وردي', 0xf08fb6], ['أبيض', 0xf6f2ea], ['بني', 0x9a6b3f], ['رمادي', 0x8c8c99]];
 const hex = (c: number) => '#' + c.toString(16).padStart(6, '0');
 // wall materials offered by the room tool
-const WALLS = ['white', 'brick', 'wood', 'stone', 'barn'];
+const WALLS = ['wallWhite', 'wallBrick', 'wallWood', 'wallStone', 'wallBarn'];
 // roof tool: shapes (with the piece whose picture stands for them) and materials
 const ROOF_SHAPES: [string, string, string | null][] = [['gable', 'جملون', 'roofTop'], ['hip', 'هرمي', 'roofPeak'], ['shed', 'مائل', 'roof'], ['flat', 'مسطّح', 'roofEdge'], ['none', 'بلا سقف', null]];
 const ROOF_MATS: [string, number | null, string][] = [['قرميد', null, '#c8553d'], ['خشب', 0x9a6b3f, '#9a6b3f'], ['أردواز', 0x6b7280, '#6b7280']];
@@ -53,7 +53,7 @@ let tab: Cat = 'flower';
 export function setTab(c: Cat) { tab = c; buildPalette(); }
 export function buildPalette() {
   const paint = tool.mode === 'paint' || tool.mode === 'room' || tool.mode === 'roof';
-  $('tabs').innerHTML = CATS.map(c => '<button class="tab' + (c[0] === tab && !paint ? ' on' : '') + '" data-cat="' + c[0] + '">' + c[1] + '</button>').join('');
+  $('tabs').innerHTML = CATS.map(c => '<button class="tab' + (c[0] === tab && !paint && tool.mode !== 'erase' ? ' on' : '') + '" data-cat="' + c[0] + '">' + c[1] + '</button>').join('');
   if (tool.mode === 'roof') {
     $('items').innerHTML = ROOF_SHAPES.map(s => '<button class="item' + (s[2] ? '' : ' swatch') + (s[0] === tool.roof.shape ? ' on' : '') + '" data-shape="' + s[0] + '">' +
       (s[2] ? '<img alt="" src="' + THUMB[s[2]] + '">' : '<span class="dot none"></span>') + '<span>' + s[1] + '</span></button>').join('') +
@@ -61,8 +61,14 @@ export function buildPalette() {
     return;
   }
   if (tool.mode === 'room') {
-    $('items').innerHTML = WALLS.map(t => '<button class="item' + (t === tool.room.wall ? ' on' : '') + '" data-wall="' + t + '"><img alt="" src="' + THUMB[t] + '"><span>' + TYPES[t].name + '</span></button>').join('') +
-      [[1, 'طابق'], [2, 'طابقان']].map(o => '<button class="item swatch' + (o[0] === tool.room.storeys ? ' on' : '') + '" data-storeys="' + o[0] + '"><span class="dot num">' + o[0] + '</span><span>' + o[1] + '</span></button>').join('');
+    $('items').innerHTML = WALLS.map(t => '<button class="item' + (t === tool.room.wall && !tool.room.demolish ? ' on' : '') + '" data-wall="' + t + '"><img alt="" src="' + THUMB[t] + '"><span>' + TYPES[t].name + '</span></button>').join('') +
+      [[1, 'طابق'], [2, 'طابقان'], [3, 'ثلاثة']].map(o => '<button class="item swatch' + (o[0] === tool.room.storeys && !tool.room.demolish ? ' on' : '') + '" data-storeys="' + o[0] + '"><span class="dot num">' + o[0] + '</span><span>' + o[1] + '</span></button>').join('') +
+      '<button class="item swatch' + (tool.room.demolish ? ' on' : '') + '" data-demolish="1"><span class="dot none"></span><span>هدم</span></button>';
+    return;
+  }
+  if (tool.mode === 'erase') {
+    // the eraser takes pieces; floors and paths only with the second choice, so a missed tap never lifts a floor
+    $('items').innerHTML = [['pieces', 'القطع', 'chair'], ['floors', 'الأرضيات', 'plank']].map(o => '<button class="item' + ((o[0] === 'floors') === tool.eraseFloors ? ' on' : '') + '" data-erase="' + o[0] + '"><img alt="" src="' + THUMB[o[2]] + '"><span>' + o[1] + '</span></button>').join('');
     return;
   }
   if (paint) {
@@ -90,26 +96,28 @@ export function initUI() {
   makeThumbs();
   const pal = document.querySelector<HTMLElement>('.palette')!;
   new ResizeObserver(() => document.documentElement.style.setProperty('--pal', pal.offsetHeight + 'px')).observe(pal);
-  $('tabs').addEventListener('click', e => { const el = (e.target as HTMLElement).closest<HTMLElement>('.tab'); if (el) { if (tool.mode === 'paint' || tool.mode === 'walk' || tool.mode === 'room' || tool.mode === 'roof') tool.mode = 'build'; setTab(el.dataset.cat as Cat); setMode(tool.mode); sfx.tick(); } });
+  $('tabs').addEventListener('click', e => { const el = (e.target as HTMLElement).closest<HTMLElement>('.tab'); if (el) { if (tool.mode === 'paint' || tool.mode === 'walk' || tool.mode === 'room' || tool.mode === 'roof' || tool.mode === 'erase') tool.mode = 'build'; setTab(el.dataset.cat as Cat); setMode(tool.mode); sfx.tick(); } });
   $('items').addEventListener('click', e => {
     const el = (e.target as HTMLElement).closest<HTMLElement>('.item'); if (!el) return;
     if (el.dataset.shape) { tool.roof.shape = el.dataset.shape as RoofShape; buildPalette(); sfx.tick(); return; }
     if (el.dataset.mat) { tool.roof.color = ROOF_MATS[Number(el.dataset.mat)][1]; buildPalette(); sfx.tick(); return; }
-    if (el.dataset.wall) { tool.room.wall = el.dataset.wall; buildPalette(); sfx.tick(); return; }
-    if (el.dataset.storeys) { tool.room.storeys = Number(el.dataset.storeys); buildPalette(); sfx.tick(); return; }
+    if (el.dataset.wall) { tool.room.wall = el.dataset.wall; tool.room.demolish = false; buildPalette(); sfx.tick(); return; }
+    if (el.dataset.storeys) { tool.room.storeys = Number(el.dataset.storeys); tool.room.demolish = false; buildPalette(); sfx.tick(); return; }
+    if (el.dataset.demolish) { tool.room.demolish = true; buildPalette(); sfx.tick(); say('اضغطي على جدار الغرفة التي تريدين هدمها. الأثاث يبقى مكانه.', 4500); return; }
+    if (el.dataset.erase) { tool.eraseFloors = el.dataset.erase === 'floors'; buildPalette(); sfx.tick(); say(tool.eraseFloors ? 'اضغطي على أرضية أو ممر لإزالته.' : 'اضغطي على أي قطعة لإزالتها.', 3000); return; }
     if (el.dataset.c !== undefined) { tool.color = el.dataset.c === '' ? null : Number(el.dataset.c); buildPalette(); sfx.tick(); return; }
     const t = el.dataset.t!, T = TYPES[t];
     if (T.stars && starTotal() < T.stars) { sfx.no(); say(T.stars === 1 ? 'هذه القطعة تُفتح بعد أول نجمة.' : 'هذه القطعة تُفتح عندما تجمعين ' + T.stars + ' نجوم.'); return; }
     tool.selected = t; setMode('build'); sfx.tick();
   });
   $('tBuild').onclick = () => setMode('build');
-  $('tErase').onclick = () => { setMode('erase'); say('اضغطي على أي قطعة لإزالتها.', 3000); };
+  $('tErase').onclick = () => { tool.eraseFloors = false; setMode('erase'); say('اضغطي على أي قطعة لإزالتها. الجدران والأرضيات لا تُمحى بالخطأ.', 4000); };
   $('tPaint').onclick = () => { setMode('paint'); say('اختاري لونًا ثم اضغطي على أي قطعة.', 3000); };
   $('tTurn').onclick = () => { setMode('turn'); say('اضغطي على أي قطعة لتدويرها.', 3000); };
   $('tMove').onclick = () => { setMode('move'); say('ضعي إصبعكِ على القطعة واسحبيها إلى مكانها الجديد.', 4000); };
   $('tSize').onclick = () => { setMode('size'); say('اضغطي على القطعة لتختاريها، ثم اسحبي إصبعكِ للأعلى لتكبيرها وللأسفل لتصغيرها.', 5000); };
   $('tWalk').onclick = () => { setMode('walk'); say('ضعي إصبعكِ على الشاشة لتمشي صديقتكِ نحوه.', 4000); };
-  $('tRoom').onclick = () => { setMode('room'); say('اسحبي إصبعكِ على الأرض لترسمي غرفة.', 4000); };
+  $('tRoom').onclick = () => { tool.room.demolish = false; setMode('room'); say('اسحبي إصبعكِ على الأرض لترسمي غرفة.', 4000); };
   $('tRoof').onclick = () => { setMode('roof'); say('اختاري شكل السقف ثم اضغطي على البيت.', 4000); };
   $('tUndo').onclick = undo; $('tRedo').onclick = redo;
   $('makkoBtn').onclick = hint;

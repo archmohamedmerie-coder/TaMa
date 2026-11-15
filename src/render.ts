@@ -45,7 +45,7 @@ const clouds: THREE.Group[] = [];
   for (let i = 0; i < 5; i++) {
     const g = new THREE.Group();
     [[0, 0, 0, 4, 1.2, 2.4], [2, .3, .4, 3, 1.4, 2], [-2, .1, -.3, 2.6, 1, 1.8]].forEach(c => { const m = new THREE.Mesh(new THREE.BoxGeometry(c[3], c[4], c[5]), mat); m.position.set(c[0], c[1], c[2]); g.add(m); });
-    g.position.set(-40 + i * 20, 15 + ((i * 7) % 5), -26 + ((i * 13) % 9) * -2); scene.add(g); clouds.push(g);
+    g.position.set(-40 + i * 20, 24 + ((i * 7) % 5), -26 + ((i * 13) % 9) * -2); scene.add(g); clouds.push(g);
   }
 })();
 
@@ -235,9 +235,11 @@ const lampLights: THREE.PointLight[] = [];
 for (let i = 0; i < 4; i++) { const l = new THREE.PointLight(0xffc56b, 0, 7, 1.6); world.add(l); lampLights.push(l); }
 // the point the lamps are chosen around; main.ts keeps it at the camera target
 export const lightAt = new THREE.Vector3();
+// how high above its cell's floor a standing lamp gives its light: just under its top
+function lampTop(t: string, s: number) { const g = GEO[t]; if (!g.boundingBox) g.computeBoundingBox(); return (g.boundingBox!.max.y + .5) * s - .15; }
 export function updateLife() {
   flowerCells = []; const lamps: number[][] = [];   // x, y, z and how far above the cell the light sits
-  voxels.forEach((v, k) => { if (isFlower(v.t)) flowerCells.push(unK(k)); else if (TYPES[v.t].glow && v.of == null) { const c = unK(k); lamps.push([c[0] + (v.o ? v.o[0] : 0), c[1], c[2] + (v.o ? v.o[1] : 0), TYPES[v.t].hang ? .3 : 1.2]); } });
+  voxels.forEach((v, k) => { if (isFlower(v.t)) flowerCells.push(unK(k)); else if (TYPES[v.t].glow && v.of == null) { const c = unK(k); lamps.push([c[0] + (v.o ? v.o[0] : 0), c[1], c[2] + (v.o ? v.o[1] : 0), TYPES[v.t].hang ? .3 : lampTop(v.t, v.s || 1)]); } });
   // only four lights are lit: those nearest the middle of the view
   const cx = lightAt.x + N / 2, cz = lightAt.z + N / 2, far = (c: number[]) => (c[0] - cx) ** 2 + (c[2] - cz) ** 2;
   lamps.sort((a, b) => far(a) - far(b));
