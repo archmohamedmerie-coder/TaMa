@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { TYPES, isBlock, isFlower, fenceGeo } from './types';
+import { TYPES, isBlock, isFlower, fenceGeo, M } from './types';
 import { N, K, inB, voxels, unK, view, cellsOf } from './world';
 import { state } from './save';
 
@@ -23,17 +23,22 @@ scene.add(sun);
 
 export const world = new THREE.Group(); world.position.set(-N / 2, 0, -N / 2); scene.add(world);
 
-// ground
-(function () {
-  const cv = document.createElement('canvas'); cv.width = cv.height = N; const cx = cv.getContext('2d')!;
-  for (let x = 0; x < N; x++) for (let z = 0; z < N; z++) { cx.fillStyle = (x + z) % 2 ? '#74c75c' : '#69bd53'; cx.fillRect(x, z, 1, 1); }
-  const tex = new THREE.CanvasTexture(cv); tex.magFilter = THREE.NearestFilter; tex.minFilter = THREE.NearestFilter; tex.colorSpace = THREE.SRGBColorSpace;
-  const top = new THREE.Mesh(new THREE.PlaneGeometry(N, N), new THREE.MeshLambertMaterial({ map: tex }));
-  top.rotation.x = -Math.PI / 2; top.position.set(N / 2, 0, N / 2); top.receiveShadow = true; world.add(top);
+// the ground of a garden: checked grass on a block of earth. The beach, the sea and the pier are drawn in sea.ts.
+let grassMat: THREE.Material | null = null;
+export function groundMeshes(): THREE.Object3D[] {
+  if (!grassMat) {
+    const cv = document.createElement('canvas'); cv.width = cv.height = N; const cx = cv.getContext('2d')!;
+    for (let x = 0; x < N; x++) for (let z = 0; z < N; z++) { cx.fillStyle = (x + z) % 2 ? '#74c75c' : '#69bd53'; cx.fillRect(x, z, 1, 1); }
+    const tex = new THREE.CanvasTexture(cv); tex.magFilter = THREE.NearestFilter; tex.minFilter = THREE.NearestFilter; tex.colorSpace = THREE.SRGBColorSpace;
+    grassMat = new THREE.MeshLambertMaterial({ map: tex });
+  }
+  const top = new THREE.Mesh(new THREE.PlaneGeometry(N, N), grassMat);
+  top.rotation.x = -Math.PI / 2; top.position.set(N / 2, 0, N / 2); top.receiveShadow = true;
   const dirt = new THREE.Mesh(new THREE.BoxGeometry(N, 1.2, N), new THREE.MeshLambertMaterial({ color: 0x9a6b3f }));
-  dirt.position.set(N / 2, -.61, N / 2); world.add(dirt);
-  // the beach, the sea and the pier around the garden are drawn in sea.ts
-})();
+  dirt.position.set(N / 2, -.61, N / 2);
+  return [top, dirt];
+}
+world.add(...groundMeshes());
 
 // clouds
 const clouds: THREE.Group[] = [];
@@ -357,6 +362,59 @@ export function setGhostCells(keys: number[]) {
   const n = Math.min(GHOSTS, keys.length);
   for (let i = 0; i < n; i++) { const c = unK(keys[i]); dummy.position.set(c[0] + .5, c[1] + .5, c[2] + .5); dummy.rotation.set(0, 0, 0); dummy.scale.setScalar(1); dummy.updateMatrix(); wallGhost.setMatrixAt(i, dummy.matrix); }
   wallGhost.count = n; wallGhost.instanceMatrix.needsUpdate = true;
+}
+
+/* ---------- a friend's island, drawn from its saved copy ----------
+   Everything is merged into a few meshes that are built once per copy: nothing on it moves or opens.
+   entries are save entries [x, y, z, type, turn, colour?, offset x?, offset z?, size?]; floors are [x, y, z, type]. */
+type SavedEntry = [number, number, number, string, number, (number | null)?, number?, number?, number?];
+export function staticIsland(entries: SavedEntry[], floors: [number, number, number, string][]): THREE.Group {
+  const out = new THREE.Group();
+  const groups = new Map<THREE.Material, THREE.BufferGeometry[]>();
+  const add = (mat: THREE.Material, g: THREE.BufferGeometry, m: THREE.Matrix4, color: THREE.Color | null, j: number) => {
+    const q = g.clone(); q.applyMatrix4(m);
+    const c = q.attributes.color as THREE.BufferAttribute;
+    if (c) for (let i = 0; i < c.count; i++) c.setXYZ(i, c.getX(i) * (color ? color.r : 1) * j, c.getY(i) * (color ? color.g : 1) * j, c.getZ(i) * (color ? color.b : 1) * j);
+    const l = groups.get(mat); if (l) l.push(q); else groups.set(mat, [q]);
+  };
+  // fences join their neighbours, as in the garden itself
+  const at = new Map<string, string>(); entries.forEach(e => { if (TYPES[e[3]]) at.set(e[0] + ',' + e[1] + ',' + e[2], e[3]); });
+  const joins = (x: number, y: number, z: number) => { const t = at.get(x + ',' + y + ',' + z); return !!t && (t === 'fence' || t === 'gate' || isBlock(t)); };
+  const m = new THREE.Matrix4(), col = new THREE.Color();
+  for (const e of entries) {
+    const [x, y, z, t, r] = e, T = TYPES[t]; if (!T || !GEO[t]) continue;
+    const c = e[5] ?? null, o: [number, number] | undefined = e[6] || e[7] ? [e[6] || 0, e[7] || 0] : undefined, s = e[8] || 1;
+    const j = isBlock(t) ? .95 + ((x * 7 + y * 13 + z * 29) % 10) / 100 : 1;
+    let geo = GEO[t], fixed = false;
+    if (t === 'fence') {
+      const mask = (joins(x + 1, y, z) ? 1 : 0) | (joins(x - 1, y, z) ? 2 : 0) | (joins(x, y, z + 1) ? 4 : 0) | (joins(x, y, z - 1) ? 8 : 0);
+      const k = mask || ((r || 0) & 2 ? 12 : 3); geo = FENCE[k] || (FENCE[k] = fenceGeo(k)); fixed = true;
+    }
+    const a = fixed ? 0 : (r || 0) * Math.PI / 4;
+    sized({ x: x + .5 + (o ? o[0] : 0), y, z: z + .5 + (o ? o[1] : 0) }, t, s, a);
+    dummy.rotation.set(0, a, 0); dummy.scale.setScalar(s); dummy.updateMatrix(); m.copy(dummy.matrix);
+    const mat = T.glow ? glowMat : baseMat;
+    if (c != null && !fixed) {
+      const sp = SPLIT[t] || (SPLIT[t] = splitPaint(t));
+      add(mat, sp.paint, m, col.setHex(c), j);
+      if (sp.keep) add(mat, sp.keep, m, null, 1);
+    } else add(mat, geo, m, fixed && c != null ? col.setHex(c) : null, j);
+    if (T.glass) add(glassMat, xgeo(t + '#g', T.glass), m, null, 1);
+    T.leaves?.forEach((l, i) => add(l.glass ? glassMat : baseMat, xgeo(t + '#l' + i, l.geo), m, null, 1));
+  }
+  for (const f of floors) {
+    if (!TYPES[f[3]]) continue;
+    dummy.position.set(f[0] + .5, f[1] + .5, f[2] + .5); dummy.rotation.set(0, 0, 0); dummy.scale.setScalar(1); dummy.updateMatrix();
+    add(baseMat, GEO[f[3]], dummy.matrix, null, 1);
+  }
+  groups.forEach((list, mat) => {
+    // merge in batches, so no single mesh grows too large for a phone
+    for (let i = 0; i < list.length; i += 1500) {
+      const mesh = new THREE.Mesh(M(list.slice(i, i + 1500)), mat);
+      mesh.castShadow = mat !== glassMat; mesh.receiveShadow = true; out.add(mesh);
+    }
+  });
+  return out;
 }
 
 /* ---------- quality that adapts to the device ---------- */

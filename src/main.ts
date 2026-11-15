@@ -1,4 +1,4 @@
-import { voxels, dirty, hooks, view, defaultWorld, loadWorld } from './world';
+import { N, voxels, dirty, hooks, view, defaultWorld, loadWorld } from './world';
 import { state, save, restore } from './save';
 import { ambience } from './audio';
 import { renderer, scene, camera, flushDirty, pop, lightAt, lowerQuality, updateDoors, updateLife, applyNight, animate, resize, reduceMotion } from './render';
@@ -8,6 +8,10 @@ import { updateInside, refreshInside } from './inside';
 import { checkGoals, stats } from './mission';
 import { $, buildPalette, syncUndo, initUI } from './ui';
 import { updateSea } from './sea';
+import { saveHooks } from './save';
+import { fam, famHooks, connect, shareIsland } from './net';
+import { syncIslands, islandArrived } from './islands';
+import { initFamily, familyChanged } from './family';
 import { initHero, settleHero, updateHero, heroCell, setFinger, clearFinger } from './hero';
 
 hooks.afterChange = () => { checkGoals(false); updateLife(); settleHero(); refreshInside(); save(); };
@@ -17,6 +21,14 @@ hooks.placed = pop;
 ambience();
 initInput();
 initUI();
+initFamily();
+
+/* ---------- the family archipelago ---------- */
+saveHooks.saved = shareIsland;
+famHooks.state = () => { syncIslands(); familyChanged(); };
+famHooks.snap = islandArrived;
+syncIslands();
+connect();
 
 /* ---------- start ---------- */
 if (!restore()) loadWorld(defaultWorld());
@@ -33,7 +45,7 @@ function tick(now: number) {
   const dt = Math.min(.05, (now - last) / 1000); last = now;
   flushDirty(dirty);
   lightAt.copy(cam.target);
-  updateSea(dt, now);
+  updateSea(dt, now, cam.target.x + N / 2, cam.target.z + N / 2);
   updateHero(dt, now);
   { const h = heroCell(); updateDoors(dt, h[0], h[1], h[2]); updateInside(h[0], h[1], h[2], cam.theta, view.fp ? 'fp' : tool.mode); }
   placeCamera();
@@ -51,4 +63,4 @@ function frame(now: number) {
   tick(now); requestAnimationFrame(frame);
 }
 requestAnimationFrame(frame);
-(window as any).__garden = { tap, pick, voxels, state, cam, stats, heroCell, tick, setFinger, clearFinger, camera, view };
+(window as any).__garden = { tap, pick, voxels, state, cam, stats, heroCell, tick, fam, setFinger, clearFinger, camera, view };

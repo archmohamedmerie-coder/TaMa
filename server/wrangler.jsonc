@@ -1,0 +1,14 @@
+// The family archipelago server: one Durable Object per family, holding who belongs to it
+// and the last saved copy of each child's island. Run locally with: npm run server
+{
+  "name": "tama-archipelago",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-11-01",
+  "durable_objects": {
+    "bindings": [
+      { "name": "ARCH", "class_name": "Archipelago" },
+      { "name": "LIMIT", "class_name": "Limiter" }
+    ]
+  },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["Archipelago", "Limiter"] }]
+}

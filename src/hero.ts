@@ -7,7 +7,7 @@ import { planePoint } from './pick';
 import { cam, tool } from './input';
 import { say } from './ui';
 import { sfx } from './audio';
-import { WATER, SEA_R, STEP, boat, onLand, onPier, groundAt, steer, nearDock } from './sea';
+import { WATER, isles, STEP, boat, onLand, onPier, groundAt, steer, nearDock } from './sea';
 
 /* ---------- the walking character: a girl of eight or nine, facing +z ----------
    A cell is a metre: a storey is three cells and a door two. She stands 1.35 m tall, her eyes at 1.24. */
@@ -215,5 +215,6 @@ function sail(dt: number, now: number) {
   cam.target.lerp(v3.set(boat.x - N / 2, 0, boat.z - N / 2), Math.min(1, dt * 3));
 }
 // how far the view may wander from the middle of the garden
-export const roam = () => sailing ? SEA_R : N / 2 + 12;
+// with friends nearby the view may wander over to their islands too
+export const roam = () => sailing ? 400 : N / 2 + 12 + Math.max(0, ...isles.map(o => Math.max(Math.abs(o.x), Math.abs(o.z))));
 export const isSailing = () => sailing;

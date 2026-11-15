@@ -7,15 +7,19 @@
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
-    "typecheck": "tsc --noEmit",
-    "deploy": "node scripts/deploy.mjs"
+    "typecheck": "tsc --noEmit && tsc -p server",
+    "deploy": "node scripts/deploy.mjs",
+    "server": "wrangler dev --config server/wrangler.jsonc --port 8787 --ip 0.0.0.0",
+    "server:check": "tsc -p server"
   },
   "dependencies": {
     "three": "^0.160.0"
   },
   "devDependencies": {
+    "@cloudflare/workers-types": "^5.20261115.1",
     "@types/three": "^0.160.0",
     "typescript": "^7.0.2",
-    "vite": "^8.3.8"
+    "vite": "^8.3.8",
+    "wrangler": "^4.162.0"
   }
 }

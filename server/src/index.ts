@@ -1,0 +1,196 @@
+import { DurableObject } from 'cloudflare:workers';
+
+/* The family archipelago.
+   A parent creates an archipelago and gets an eight-letter family code. Another parent enters the code
+   on their child's device; that island waits until the creator's device approves it. Up to four islands.
+   Each device keeps its own island; the server keeps only the last copy each island sent, so friends
+   can see it while its owner is away. No accounts, no e-mail: a device is known by a random token. */
+
+export interface Env {
+  ARCH: DurableObjectNamespace<Archipelago>;
+  LIMIT: DurableObjectNamespace<Limiter>;
+}
+
+const MAX_ISLANDS = 4;
+const MAX_SNAPSHOT = 900_000;          // characters of one island's saved garden
+const ALPHA = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';   // no 0/O or 1/I to mix up
+
+const random = (n: number) => crypto.getRandomValues(new Uint8Array(n));
+const newCode = () => Array.from(random(8), b => ALPHA[b % 32]).join('');
+const newToken = () => Array.from(random(24), b => b.toString(16).padStart(2, '0')).join('');
+const newId = () => 'm' + Array.from(random(6), b => b.toString(16).padStart(2, '0')).join('');
+async function hash(s: string) {
+  const d = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(s));
+  return Array.from(new Uint8Array(d), b => b.toString(16).padStart(2, '0')).join('');
+}
+const cleanCode = (s: unknown) => String(s ?? '').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 8);
+const cleanName = (s: unknown) => String(s ?? '').replace(/[\u0000-\u001f<>&"'`]/g, '').replace(/\s+/g, ' ').trim().slice(0, 14);
+const cleanColor = (c: unknown) => { const n = Number(c); return Number.isInteger(n) && n >= 0 && n <= 7 ? n : 0; };
+
+/* ---------- who may call: the published game and local testing ---------- */
+function allowed(origin: string | null) {
+  if (!origin) return false;
+  if (origin === 'https://archmohamedmerie-coder.github.io') return true;
+  return /^https?:\/\/(localhost|127\.0\.0\.1|192\.168\.\d+\.\d+)(:\d+)?$/.test(origin);
+}
+function cors(origin: string | null): Record<string, string> {
+  return allowed(origin) ? { 'Access-Control-Allow-Origin': origin!, 'Access-Control-Allow-Methods': 'POST, GET, OPTIONS', 'Access-Control-Allow-Headers': 'Content-Type', Vary: 'Origin' } : {};
+}
+const json = (o: unknown, origin: string | null, status = 200) => new Response(JSON.stringify(o), { status, headers: { 'Content-Type': 'application/json', ...cors(origin) } });
+
+export default {
+  async fetch(req: Request, env: Env): Promise<Response> {
+    const url = new URL(req.url), origin = req.headers.get('Origin');
+    if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers: cors(origin) });
+    if (!allowed(origin)) return new Response('forbidden', { status: 403 });
+    const ip = req.headers.get('CF-Connecting-IP') || 'local';
+    const limiter = env.LIMIT.get(env.LIMIT.idFromName('all'));
+
+    if (url.pathname === '/api/create' && req.method === 'POST') {
+      if (!(await limiter.hit(ip, 'create', 5))) return json({ err: 'slow' }, origin, 429);
+      const b = await req.json<any>().catch(() => ({}));
+      const name = cleanName(b.name); if (!name) return json({ err: 'name' }, origin, 400);
+      for (let i = 0; i < 5; i++) {
+        const code = newCode(), r = await env.ARCH.get(env.ARCH.idFromName(code)).create(code, name, cleanColor(b.color));
+        if (r) return json({ code, ...r }, origin);
+      }
+      return json({ err: 'busy' }, origin, 503);
+    }
+    if (url.pathname === '/api/join' && req.method === 'POST') {
+      // guessing codes is slow: a few tries per address every ten minutes
+      if (!(await limiter.hit(ip, 'join', 10))) return json({ err: 'slow' }, origin, 429);
+      const b = await req.json<any>().catch(() => ({}));
+      const code = cleanCode(b.code), name = cleanName(b.name);
+      if (code.length !== 8) return json({ err: 'nocode' }, origin, 404);
+      if (!name) return json({ err: 'name' }, origin, 400);
+      const r = await env.ARCH.get(env.ARCH.idFromName(code)).join(name, cleanColor(b.color));
+      return json(r, origin, 'err' in r ? (r.err === 'nocode' ? 404 : 409) : 200);
+    }
+    if (url.pathname === '/api/ws') {
+      if (req.headers.get('Upgrade') !== 'websocket') return new Response('expected websocket', { status: 426 });
+      const code = cleanCode(url.searchParams.get('code'));
+      if (code.length !== 8) return new Response('no', { status: 404 });
+      return env.ARCH.get(env.ARCH.idFromName(code)).fetch(req);
+    }
+    return new Response('not found', { status: 404 });
+  },
+};
+
+/* ---------- a simple count of attempts per address ---------- */
+export class Limiter extends DurableObject<Env> {
+  private seen = new Map<string, { n: number; t: number }>();
+  async hit(ip: string, kind: string, max: number): Promise<boolean> {
+    const k = kind + ':' + ip, now = Date.now(), e = this.seen.get(k);
+    if (!e || now - e.t > 600_000) { this.seen.set(k, { n: 1, t: now }); return true; }
+    e.n++; return e.n <= max;
+  }
+}
+
+/* ---------- one family ---------- */
+interface Member { id: string; name: string; color: number; slot: number | null; status: 'pending' | 'member'; tok: string; at: number }
+interface Meta { code: string; admin: string; at: number }
+
+export class Archipelago extends DurableObject<Env> {
+  private async meta() { return this.ctx.storage.get<Meta>('meta'); }
+  private async members() { return (await this.ctx.storage.get<Record<string, Member>>('members')) || {}; }
+
+  async create(code: string, name: string, color: number) {
+    if (await this.meta()) return null;          // that code is taken; the caller tries another
+    const id = newId(), token = newToken();
+    const m: Member = { id, name, color, slot: 0, status: 'member', tok: await hash(token), at: Date.now() };
+    await this.ctx.storage.put({ meta: { code, admin: id, at: Date.now() } satisfies Meta, members: { [id]: m } });
+    return { id, token };
+  }
+
+  async join(name: string, color: number): Promise<{ id: string; token: string } | { err: string }> {
+    if (!(await this.meta())) return { err: 'nocode' };
+    const ms = await this.members();
+    if (Object.keys(ms).length >= MAX_ISLANDS) return { err: 'full' };
+    const id = newId(), token = newToken();
+    ms[id] = { id, name, color, slot: null, status: 'pending', tok: await hash(token), at: Date.now() };
+    await this.ctx.storage.put('members', ms);
+    await this.broadcast();
+    return { id, token };
+  }
+
+  async fetch(req: Request): Promise<Response> {
+    const meta = await this.meta(), ms = await this.members();
+    const tok = new URL(req.url).searchParams.get('token') || '';
+    const h = await hash(tok), me = Object.values(ms).find(m => m.tok === h);
+    const pair = new WebSocketPair();
+    this.ctx.acceptWebSocket(pair[1], me ? [me.id] : ['nobody']);
+    if (!meta || !me) {
+      // unknown or removed: tell the device so it forgets this family
+      pair[1].send(JSON.stringify({ t: 'gone', why: meta ? 'removed' : 'nocode' })); pair[1].close(4000, 'gone');
+    } else {
+      pair[1].serializeAttachment({ id: me.id });
+      await this.broadcast();
+      if (me.status === 'member') await this.sendSnaps(pair[1], me.id);
+    }
+    return new Response(null, { status: 101, webSocket: pair[0] });
+  }
+
+  async webSocketMessage(ws: WebSocket, raw: string | ArrayBuffer) {
+    if (typeof raw !== 'string' || raw.length > MAX_SNAPSHOT + 200) return;
+    const { id } = (ws.deserializeAttachment() || {}) as { id?: string };
+    const meta = await this.meta(), ms = await this.members(), me = id ? ms[id] : undefined;
+    if (!meta || !me) { ws.close(4000, 'gone'); return; }
+    let msg: any; try { msg = JSON.parse(raw); } catch { return; }
+    const admin = meta.admin === me.id;
+
+    if (msg.t === 'snap' && me.status === 'member' && typeof msg.d === 'string' && msg.d.length <= MAX_SNAPSHOT) {
+      await this.ctx.storage.put('snap:' + me.id, msg.d);
+      const out = JSON.stringify({ t: 'snap', id: me.id, d: msg.d });
+      for (const o of this.memberSockets(ms)) if (o !== ws) o.send(out);
+    }
+    else if (msg.t === 'approve' && admin && ms[msg.id]?.status === 'pending') {
+      const used = new Set(Object.values(ms).map(m => m.slot));
+      let slot = 0; while (used.has(slot)) slot++;
+      ms[msg.id].status = 'member'; ms[msg.id].slot = slot;
+      await this.ctx.storage.put('members', ms);
+      await this.broadcast();
+      for (const o of this.ctx.getWebSockets(msg.id)) await this.sendSnaps(o, msg.id);
+    }
+    else if (msg.t === 'remove' && admin && ms[msg.id] && msg.id !== me.id) await this.drop(ms, msg.id, 'removed');
+    else if (msg.t === 'leave' && !admin) await this.drop(ms, me.id, 'left');
+    else if (msg.t === 'dissolve' && admin) {
+      for (const o of this.ctx.getWebSockets()) { try { o.send(JSON.stringify({ t: 'gone', why: 'dissolved' })); o.close(4000, 'gone'); } catch { /* already closed */ } }
+      await this.ctx.storage.deleteAll();
+    }
+  }
+  async webSocketClose(ws: WebSocket) { try { ws.close(); } catch { /* closed */ } await this.broadcast(ws); }
+  async webSocketError(ws: WebSocket) { await this.broadcast(ws); }
+
+  private async drop(ms: Record<string, Member>, id: string, why: string) {
+    delete ms[id];
+    await this.ctx.storage.put('members', ms); await this.ctx.storage.delete('snap:' + id);
+    for (const o of this.ctx.getWebSockets(id)) { try { o.send(JSON.stringify({ t: 'gone', why })); o.close(4000, 'gone'); } catch { /* closed */ } }
+    await this.broadcast();
+  }
+  private memberSockets(ms: Record<string, Member>) {
+    return Object.values(ms).filter(m => m.status === 'member').flatMap(m => this.ctx.getWebSockets(m.id));
+  }
+  private async sendSnaps(ws: WebSocket, except: string) {
+    const ms = await this.members();
+    for (const m of Object.values(ms)) {
+      if (m.id === except || m.status !== 'member') continue;
+      const d = await this.ctx.storage.get<string>('snap:' + m.id);
+      if (d) ws.send(JSON.stringify({ t: 'snap', id: m.id, d }));
+    }
+  }
+  // tell every connected device who is in the family and who is here; a pending island learns only that it waits
+  private async broadcast(closing?: WebSocket) {
+    const meta = await this.meta(); if (!meta) return;
+    const ms = await this.members();
+    const online = (id: string) => this.ctx.getWebSockets(id).some(w => w !== closing && w.readyState === WebSocket.OPEN);
+    const list = Object.values(ms).filter(m => m.status === 'member').map(m => ({ id: m.id, name: m.name, color: m.color, slot: m.slot, online: online(m.id) }));
+    const pending = Object.values(ms).filter(m => m.status === 'pending').map(m => ({ id: m.id, name: m.name }));
+    for (const m of Object.values(ms)) {
+      const admin = meta.admin === m.id;
+      const msg = m.status === 'pending' ? { t: 'state', me: m.id, status: 'pending' }
+        : { t: 'state', me: m.id, status: 'member', admin, code: admin ? meta.code : undefined, members: list, pending: admin ? pending : [] };
+      const s = JSON.stringify(msg);
+      for (const o of this.ctx.getWebSockets(m.id)) if (o !== closing) { try { o.send(s); } catch { /* closed */ } }
+    }
+  }
+}

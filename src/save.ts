@@ -1,6 +1,9 @@
 import { voxels, unK, loadWorld, OFF, type Entry } from './world';
+import { storeKey } from './profile';
 
-export const SAVE_KEY = 'makabi-garden-v1';
+export const SAVE_KEY = storeKey('makabi-garden-v1');
+// called after each save with the garden as saved, so it can be shared with the family
+export const saveHooks = { saved: (_data: { voxels: Entry[]; floors: [number, number, number, string][] }) => {} };
 export const state = { stars: [false, false, false], night: false, muted: false, seenIntro: false, winShown: false, hero: null as number[] | null };
 
 let saveTimer: number | undefined;
@@ -8,8 +11,9 @@ export function saveNow() {
   try {
     const list: Entry[] = []; voxels.forEach((v, k) => { if (v.of != null) return; const c = unK(k); const e: Entry = [c[0], c[1], c[2], v.t, v.r || 0]; if (v.c != null || v.o || v.s) e.push(v.c != null ? v.c : null); if (v.o || v.s) e.push(v.o ? v.o[0] : 0, v.o ? v.o[1] : 0); if (v.s) e.push(v.s); list.push(e); });
     const floors: [number, number, number, string][] = []; voxels.forEach((v, k) => { if (v.f) { const c = unK(k); floors.push([c[0], c[1], c[2], v.f]); } });
-    localStorage.setItem(SAVE_KEY, JSON.stringify({ v: 3, voxels: list, floors, state }));
-  } catch (e) { /* storage unavailable */ }
+    try { localStorage.setItem(SAVE_KEY, JSON.stringify({ v: 3, voxels: list, floors, state })); } catch (e) { /* storage unavailable */ }
+    saveHooks.saved({ voxels: list, floors });
+  } catch (e) { /* nothing to save */ }
 }
 export function save() { clearTimeout(saveTimer); saveTimer = window.setTimeout(saveNow, 400); }
 export function restore(): boolean {
