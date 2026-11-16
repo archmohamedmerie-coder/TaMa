@@ -179,29 +179,81 @@ export function setIsles(list: { x: number; z: number }[]) {
 const MAX = 5.2, TURN = 1.7;
 const wrap = (a: number) => ((a + Math.PI) % (Math.PI * 2) + Math.PI * 2) % (Math.PI * 2) - Math.PI;
 // open water: deep enough near every island, clear of every pier, and not too far from them all
+// The sea is one open rectangle around all the islands, with room to sail round the outside of each.
+// (Circles around each island left a gap between two islands placed diagonally: a wall no one could see.)
+const SEA_MARGIN = 40;
 function waterOK(x: number, z: number) {
-  let near = false;
+  let x0 = Infinity, x1 = -Infinity, z0 = Infinity, z1 = -Infinity;
   for (const o of isles) {
     const lx = x - o.x, lz = z - o.z;
     if (shoreDist(lx, lz) < 5.3) return false;
     if (lx >= PIER.x0 - .9 && lx <= PIER.x1 + .9 && lz >= PIER.z0 && lz <= PIER.z1 + .9) return false;
-    if (Math.hypot(lx - N / 2, lz - N / 2) <= 64) near = true;
+    x0 = Math.min(x0, o.x); x1 = Math.max(x1, o.x + N); z0 = Math.min(z0, o.z); z1 = Math.max(z1, o.z + N);
   }
-  return near;
+  return x >= x0 - SEA_MARGIN && x <= x1 + SEA_MARGIN && z >= z0 - SEA_MARGIN && z <= z1 + SEA_MARGIN;
 }
 // the boat fits here when its middle, bow and stern are all in open water
 const boatFree = (x: number, z: number, a: number) => waterOK(x, z) && waterOK(x + Math.sin(a) * 1.7, z + Math.cos(a) * 1.7) && waterOK(x - Math.sin(a) * 1.4, z - Math.cos(a) * 1.4);
 
 // steer towards a point (or let the boat glide to a stop); returns false when it bumped the shore
+/* ---------- finding the way ----------
+   A tap on an island means "take me to its pier": her own berth on the island here, the guest side
+   of a friend's. And when an island (or a pier) stands between the boat and where it is going, the boat
+   heads for the nearest corner around it first, as a child steering would. */
+function segHits(ax: number, az: number, bx: number, bz: number, x0: number, z0: number, x1: number, z1: number) {
+  let t0 = 0, t1 = 1; const dx = bx - ax, dz = bz - az;
+  for (const [p, q] of [[-dx, ax - x0], [dx, x1 - ax], [-dz, az - z0], [dz, z1 - az]]) {
+    if (p === 0) { if (q < 0) return false; continue; }
+    const r = q / p;
+    if (p < 0) { if (r > t1) return false; if (r > t0) t0 = r; } else { if (r < t0) return false; if (r < t1) t1 = r; }
+  }
+  return true;
+}
+// what stands in the sea: each island with its beach (drawn a little inside where the boat may go, so a
+// boat beside it is not counted as "in" it), and each pier; with the corners to sail round them by
+function obstacles() {
+  const out: { r: number[]; cs: number[][] }[] = [];
+  for (const o of isles) {
+    out.push({ r: [o.x - 5, o.z - 5, o.x + N + 5, o.z + N + 5], cs: [[o.x - 10, o.z - 10], [o.x + N + 10, o.z - 10], [o.x - 10, o.z + N + 16], [o.x + N + 10, o.z + N + 16]] });
+    out.push({ r: [o.x + PIER.x0 - .9, o.z + PIER.z0, o.x + PIER.x1 + .9, o.z + PIER.z1 + .9], cs: [[o.x + PIER.x0 - 3.5, o.z + PIER.z1 + 4], [o.x + PIER.x1 + 3.5, o.z + PIER.z1 + 4]] });
+  }
+  return out;
+}
+// returns where to head now, and whether that is the goal itself (only there does the boat slow down)
+function route(tx: number, tz: number, depth = 0): [number, number, boolean] {
+  if (depth === 0) for (let i = 0; i < isles.length; i++) {
+    const o = isles[i], lx = tx - o.x, lz = tz - o.z;
+    if (shoreDist(lx, lz) < 6 || (lx > PIER.x0 - 2 && lx < PIER.x1 + 2 && lz > PIER.z0 && lz < PIER.z1 + 2)) {
+      const B = i === 0 ? boat.berth : GUEST; tx = o.x + B.x; tz = o.z + B.z; break;
+    }
+  }
+  if (depth > 4) return [tx, tz, depth === 0];
+  for (const ob of obstacles()) {
+    const [x0, z0, x1, z1] = ob.r;
+    if (!segHits(boat.x, boat.z, tx, tz, x0, z0, x1, z1)) continue;
+    // round it by a corner the boat is not already at, preferring one from which the goal can be seen,
+    // and taking the shortest way; then find the way to that corner the same way
+    // (never the goal itself: when the goal is already a corner, the way to it goes round by another one)
+    const cs = ob.cs.filter(c => Math.hypot(c[0] - boat.x, c[1] - boat.z) > 2.5 && Math.hypot(c[0] - tx, c[1] - tz) > 1);
+    const seeing = cs.filter(c => !segHits(c[0], c[1], tx, tz, x0, z0, x1, z1));
+    let c = cs[0], cd = Infinity;
+    for (const k of seeing.length ? seeing : cs) { const d = Math.hypot(k[0] - boat.x, k[1] - boat.z) + Math.hypot(tx - k[0], tz - k[1]); if (d < cd) { cd = d; c = k; } }
+    if (!c) return [tx, tz, depth === 0];
+    return route(c[0], c[1], depth + 1);
+  }
+  return [tx, tz, depth === 0];
+}
+
 export function steer(dt: number, tx: number | null, tz: number) {
   boat.docking = false;
   let want = 0;
   if (tx != null) {
+    const r = route(tx, tz); tx = r[0]; tz = r[1];
     const dx = tx - boat.x, dz = tz - boat.z, d = Math.hypot(dx, dz);
     if (d > 1.2) {
       const df = wrap(Math.atan2(dx, dz) - boat.a), na = boat.a + Math.sign(df) * Math.min(Math.abs(df), TURN * dt);
       if (boatFree(boat.x, boat.z, na)) boat.a = na;
-      want = MAX * Math.min(1, d / 6) * Math.max(.25, Math.cos(df));
+      want = MAX * (r[2] ? Math.min(1, d / 6) : 1) * Math.max(.25, Math.cos(df));
     }
   }
   boat.v += (want - boat.v) * Math.min(1, dt * (want > boat.v ? 1.2 : .8));
@@ -241,3 +293,6 @@ export function updateSea(dt: number, now: number, cx: number, cz: number) {
   boat.mesh.rotation.set((wave(boat.x - s, boat.z - c) - wave(boat.x + s, boat.z + c)) * .35, boat.a, (wave(boat.x + c * .6, boat.z - s * .6) - wave(boat.x - c * .6, boat.z + s * .6)) * .4, 'YXZ');
 }
 waveFlags([own]);
+
+// for tests from the console
+export const routeFor = (x: number, z: number, tx: number, tz: number) => { const bx = boat.x, bz = boat.z; boat.x = x; boat.z = z; const r = route(tx, tz); boat.x = bx; boat.z = bz; return r; };
