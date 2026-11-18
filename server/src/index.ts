@@ -171,6 +171,19 @@ export class Archipelago extends DurableObject<Env> {
       await this.broadcast();
     }
     else if (msg.t === 'ice' && me.status === 'member') ws.send(JSON.stringify({ t: 'ice', servers: await this.iceServers() }));
+    /* ---------- building together ----------
+       A visitor's step goes only to the island she is visiting; that island's cells go only to its visitors. */
+    else if (msg.t === 'edit' && me.status === 'member' && Array.isArray(msg.d)) {
+      const host = await this.ctx.storage.get<string>('visit:' + me.id);
+      if (host) this.tell(host, { t: 'edit', from: me.id, d: msg.d });
+    }
+    else if (msg.t === 'cells' && me.status === 'member' && Array.isArray(msg.d)) {
+      const out = { t: 'cells', from: me.id, d: msg.d };
+      for (const [k, h] of await this.ctx.storage.list<string>({ prefix: 'visit:' })) {
+        const g = k.slice(6);
+        if (h === me.id && (msg.to ? g === msg.to : g !== msg.skip)) this.tell(g, out);
+      }
+    }
     else if (me.status === 'member' && ['knock', 'unknock', 'answer', 'invite', 'door', 'bye', 'endVisit'].includes(msg.t)) await this.visits(ws, ms, me, msg);
     else if (msg.t === 'approve' && admin && ms[msg.id]?.status === 'pending') {
       const used = new Set(Object.values(ms).map(m => m.slot));

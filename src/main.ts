@@ -14,6 +14,7 @@ import { syncIslands, islandArrived, copyOf, here } from './islands';
 import { initFamily, familyChanged } from './family';
 import { initBoats, updateBoats, liveNews, remoteBoats } from './boats';
 import { visiting, visitNews, visitStateChanged, familyGone, initVisitors } from './visit';
+import { buildNews, buildersChanged } from './together';
 import { initVoice, voiceNews, voiceStateChanged, voiceConnected, voiceDebug } from './voice';
 import { initHero, settleHero, updateHero, heroCell, setFinger, clearFinger } from './hero';
 
@@ -29,7 +30,8 @@ initFamily();
 
 /* ---------- the family archipelago ---------- */
 saveHooks.saved = shareIsland;
-famHooks.state = () => { syncIslands(); familyChanged(); visitStateChanged(); voiceStateChanged(); };
+famHooks.state = () => { syncIslands(); familyChanged(); visitStateChanged(); voiceStateChanged(); buildersChanged(); };
+famHooks.build = buildNews;
 famHooks.voice = voiceNews;
 famHooks.connected = voiceConnected;
 initVoice();

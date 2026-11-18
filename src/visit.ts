@@ -7,13 +7,14 @@ import { tool } from './input';
 import { fam, sendVisit } from './net';
 import { here, offsetOf, setOwnCopy, copyOf, syncIslands, islandHooks } from './islands';
 import { say } from './ui';
+import { sentLately } from './together';
 import { sfx } from './audio';
 
 /* ---------- visiting a friend's island ----------
    The visitor rings the bell at her friend's pier; the friend answers "welcome" or "not now".
    On "welcome" the visitor's own garden is put safely aside and her friend's island becomes the world
    she walks in. While she is there, NOTHING is saved or shared as hers (saveLock), her undo history is
-   set aside, and the building tools are put away. When she sails off, or her friend says goodbye or
+   set aside. She may build with her friend (together.ts), but what she builds stays on her friend's island. When she sails off, or her friend says goodbye or
    goes away, her own garden comes back exactly as it was, and only then is the lock opened again. */
 
 const nameOf = (id: string) => fam.members.find(m => m.id === id)?.name || '';
@@ -44,7 +45,7 @@ function enterVisit(host: string) {
   document.body.classList.add('visiting');
   if (tool.mode !== 'walk') ($('tWalk') as HTMLButtonElement).click();
   sfx.star();
-  say('أهلًا بكِ في جزيرة ' + nameOf(host) + '! تجوّلي فيها. قاربكِ ينتظركِ عند الرصيف.', 5000);
+  say('أهلًا بكِ في جزيرة ' + nameOf(host) + '! تجوّلي وابني معها. قاربكِ ينتظركِ عند الرصيف.', 5000);
 }
 
 /* ---------- going home ---------- */
@@ -81,7 +82,12 @@ export function leaveVisit(why: 'self' | 'host' | 'away') {
 let hostTimer = 0;
 islandHooks.hostChanged = data => {
   clearTimeout(hostTimer);
-  hostTimer = window.setTimeout(() => { if (here.id && data && Array.isArray(data.voxels)) { loadWorld(data.voxels, Array.isArray(data.floors) ? data.floors : []); hooks.afterChange(); } }, 600);
+  const later = () => { hostTimer = window.setTimeout(() => {
+    // a step of hers may not be in this copy yet: wait for it rather than make it vanish for a moment
+    if (sentLately()) { later(); return; }
+    if (here.id && data && Array.isArray(data.voxels)) { loadWorld(data.voxels, Array.isArray(data.floors) ? data.floors : []); hooks.afterChange(); }
+  }, 600); };
+  later();
 };
 
 /* ---------- the big boat button ---------- */

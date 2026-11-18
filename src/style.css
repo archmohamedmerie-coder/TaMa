@@ -225,8 +225,8 @@ body.fp .horn{bottom:28px}
 .sail.bell svg{stroke:var(--ink)}
 .sail:disabled{opacity:.85;cursor:default}
 .card .seg{margin:10px 0 4px}
-/* visiting a friend: only walking; her own building tools are put away */
-body.visiting .tools .tool:not(#tWalk),body.visiting .palette,body.visiting #resetBtn,body.visiting #familyBtn{display:none}
+/* visiting a friend: she builds with her, but cannot start the island over or open the parents' screen */
+body.visiting #resetBtn,body.visiting #familyBtn{display:none}
 
 /* voices: the speaker in the top row, the talk button above the palette, who is speaking under the title */
 #speakerBtn .x{display:none}

@@ -21,6 +21,8 @@ export const GUEST_STEP = { x: N / 2 - .45, z: N + 8.6 };
 
 // the islands in the sea, by where their garden starts; this child's own island is always at 0, 0
 export let isles: { x: number; z: number }[] = [{ x: 0, z: 0 }];
+// how far apart the islands lie, the widest way: 0 for an island alone
+export const isleSpan = () => { let a = 0; for (const p of isles) for (const q of isles) a = Math.max(a, Math.abs(p.x - q.x), Math.abs(p.z - q.z)); return a; };
 
 // how far a spot is from the edge of a garden (0 inside it)
 export const shoreDist = (x: number, z: number) => Math.hypot(Math.max(-x, 0, x - N), Math.max(-z, 0, z - N));

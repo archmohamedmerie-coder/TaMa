@@ -5,6 +5,7 @@ import { canvas, camera, ghost, setRoomPreview, resize, showSelection } from './
 import { pick, targetFor, planePoint, type Hit } from './pick';
 import { sfx } from './audio';
 import { say, undo, redo } from './ui';
+import { isleSpan } from './sea';
 import { setFinger, clearFinger, heroEye, lookBy, walkToScreen, roam } from './hero';
 
 // current tool, shared with the palette in ui.ts
@@ -50,7 +51,7 @@ function turnPiece(ak: number) {
   const v = voxels.get(ak)!, a = unK(ak);
   const op = swapOp(pieceKeys(ak), { x: a[0], y: a[1], z: a[2], t: v.t, r: ((v.r || 0) + turnStep(v.t)) % 8, c: v.c, o: v.o, s: v.s });
   if (!op) { sfx.no(); say('لا يوجد مكان كافٍ للتدوير هنا.'); return; }
-  commit(op); sfx.turn();
+  if (commit(op)) { sfx.turn(); }
 }
 /* ---------- loose pieces stand anywhere, not only in the middle of a cell ---------- */
 // The spot for a loose piece whose middle should be at (fx, fz) on level y: its cell and its offset inside it.
@@ -142,7 +143,7 @@ function endMove(ak: number, px: number, py: number, drop: boolean, gx = 0, gz =
   const m = moveTarget(px, py, ak, gx, gz), v = voxels.get(ak);
   if (!m || !v || m.same) return;
   if (!m.op) { sfx.no(); say('لا يوجد مكان كافٍ هنا. جرّبي مكانًا آخر.', 3000); return; }
-  commit(m.op); sfx.place(v.t);
+  if (commit(m.op)) { sfx.place(v.t); }
 }
 /* ---------- changing a piece's size: press it and drag up to grow it, down to shrink it ---------- */
 const clampSize = (s: number) => Math.round(Math.max(SIZE_MIN, Math.min(SIZE_MAX, s)) * 100) / 100;
@@ -154,7 +155,7 @@ function endSize(ak: number, s: number | null) {
   view.sizing = null; if (v) dirty.add(v.t);
   if (!v || s == null || s === (v.s || 1)) return;
   const a = unK(ak), op = swapOp(pieceKeys(ak), { x: a[0], y: a[1], z: a[2], t: v.t, r: v.r, c: v.c, o: v.o, s });
-  if (op) { commit(op); sfx.turn(); }
+  if (op) { if (commit(op)) { sfx.turn(); } }
 }
 export function tap(px: number, py: number) {
   const hit = pick(px, py);
@@ -170,13 +171,13 @@ export function tap(px: number, py: number) {
     // pulling down a room: a deliberate step of its own, and undo brings it all back
     const op = hit.ground ? null : demolishOp(hit.k);
     if (!op) { sfx.no(); say('اضغطي على جدار الغرفة التي تريدين هدمها.', 3000); return; }
-    commit(op); sfx.remove(); say('هدمتِ الغرفة. زر «تراجع» يعيدها كما كانت.', 4000); return;
+    if (commit(op)) { sfx.remove(); say('هدمتِ الغرفة. زر «تراجع» يعيدها كما كانت.', 4000); } return;
   }
   if (tool.mode === 'walk' || tool.mode === 'room' || tool.mode === 'move') return;
   if (tool.mode === 'roof') {
     const op = hit.ground ? null : roofOp(hit.cell[0], hit.cell[1], hit.cell[2], tool.roof.shape, tool.roof.color == null ? undefined : tool.roof.color);
     if (!op) { sfx.no(); say(hit.ground ? 'اضغطي على جدار البيت لأضع له سقفًا.' : tool.roof.shape === 'none' ? 'لا يوجد سقف هنا.' : 'لا يوجد مكان لسقف فوق هذا الجدار.'); return; }
-    commit(op); tool.roof.shape === 'none' ? sfx.remove() : sfx.place('roof'); return;
+    if (commit(op)) { tool.roof.shape === 'none' ? sfx.remove() : sfx.place('roof'); } return;
   }
   if (tool.mode === 'erase') {
     if (hit.ground) return;
@@ -184,7 +185,7 @@ export function tap(px: number, py: number) {
     if (tool.eraseFloors) {
       // the floor eraser takes away floors and paths, and nothing else
       if (!T.flat) { sfx.no(); say('ممحاة الأرضيات تزيل الأرضيات والممرات فقط.', 3000); return; }
-      commit(swapOp([hit.k], null)!); sfx.remove(); return;
+      if (commit(swapOp([hit.k], null)!)) { sfx.remove(); } return;
     }
     // walls, floors and roofs belong to the house: a missed tap must not break it
     if (isStructure(hit.v.t)) {
@@ -202,21 +203,21 @@ export function tap(px: number, py: number) {
     const op = swapOp(keys, null)!;
     // a window or door leaves its wall whole again
     if (T.opening) { const w = wallBeside(own); if (w) for (const e of op) if (own.includes(e.k)) e.b = { ...w }; }
-    commit(op); sfx.remove(); return;
+    if (commit(op)) { sfx.remove(); } return;
   }
   if (tool.mode === 'paint') {
     if (hit.ground) return;
     const c = tool.color == null ? undefined : tool.color;
     if (hit.v.c === c) return;
     const a = unK(hit.k);
-    commit(swapOp(pieceKeys(hit.k), { x: a[0], y: a[1], z: a[2], t: hit.v.t, r: hit.v.r, c, o: hit.v.o, s: hit.v.s })!); sfx.turn(); return;
+    if (commit(swapOp(pieceKeys(hit.k), { x: a[0], y: a[1], z: a[2], t: hit.v.t, r: hit.v.r, c, o: hit.v.o, s: hit.v.s })!)) { sfx.turn(); } return;
   }
   if (tool.mode === 'turn') { if (!hit.ground) turnPiece(hit.k); return; }
   const selected = tool.selected;
   if (selected === 'skylight' && !hit.ground && hit.v.t === 'roof') {
     // a roof window takes the place of the slope that was tapped
     const a = unK(hit.k);
-    commit(swapOp(pieceKeys(hit.k), { x: a[0], y: a[1], z: a[2], t: selected, r: hit.v.r, c: hit.v.c })!); sfx.place(selected); return;
+    if (commit(swapOp(pieceKeys(hit.k), { x: a[0], y: a[1], z: a[2], t: selected, r: hit.v.r, c: hit.v.c })!)) { sfx.place(selected); } return;
   }
   if (TYPES[selected].hang) {
     // a ceiling light goes just under the first block above the tapped spot
@@ -226,12 +227,12 @@ export function tap(px: number, py: number) {
     for (; y >= 0 && y < H - 1 && inB(x, y, z); y++) { const up = voxels.get(K(x, y + 1, z)); if (up && isBlock(up.t)) { found = true; break; } }
     const op = found && !voxels.has(K(x, y, z)) ? swapOp([], { x, y, z, t: selected, r: 0 }) : null;
     if (!op) { sfx.no(); say('المصباح السقفي يحتاج سقفًا فوقه.'); return; }
-    commit(op); sfx.place(selected); return;
+    if (commit(op)) { sfx.place(selected); } return;
   }
   if (TYPES[selected].opening && !hit.ground && isBlock(hit.v.t)) {
     const o = openingPlacement(hit, selected), op = o && swapOp(o.keys, o.place);
     if (!op) { sfx.no(); say('لا يتسع هذا هنا. جرّبي جدارًا أوسع.'); return; }
-    commit(op); sfx.place(selected); return;
+    if (commit(op)) { sfx.place(selected); } return;
   }
   const tg = targetFor(hit, selected);
   if (!tg) return;
@@ -260,7 +261,7 @@ export function tap(px: number, py: number) {
   }
   const op = swapOp(gone, { x: tg.cell[0], y: tg.cell[1], z: tg.cell[2], t: selected, r, o });
   if (!op) { sfx.no(); say('لا يوجد مكان كافٍ هنا. جرّبي مكانًا أوسع.'); return; }
-  commit(op); selected === 'fountain' || selected === 'water' ? sfx.splash() : sfx.place(selected);
+  if (commit(op)) { selected === 'fountain' || selected === 'water' ? sfx.splash() : sfx.place(selected); }
 }
 
 /* ---------- camera & input ---------- */
@@ -281,7 +282,8 @@ export function placeCamera() {
     camera.position.set(x, e.y, z); camera.lookAt(x + Math.sin(e.f) * cp, e.y + Math.sin(e.p), z + Math.cos(e.f) * cp);
     return;
   }
-  cam.phi = Math.min(1.42, Math.max(.18, cam.phi)); cam.dist = Math.min(72, Math.max(2.6, cam.dist));
+  // from almost straight above to almost level; far enough out to see every island of the archipelago at once
+  cam.phi = Math.min(1.42, Math.max(.04, cam.phi)); cam.dist = Math.min(72 + 1.6 * isleSpan() / Math.min(1, camera.aspect), Math.max(2.6, cam.dist));
   { const r = roam(); cam.target.x = Math.min(r, Math.max(-r, cam.target.x)); cam.target.z = Math.min(r, Math.max(-r, cam.target.z)); }
   // zoomed right in, the view rises from the ground to the height of the girl and the furniture
   const s = Math.sin(cam.phi), ty = cam.target.y + Math.max(0, 1 - cam.dist / 14) * 1.2;
@@ -336,7 +338,7 @@ function buildRoom(g: Rect) {
   if (r.x1 - r.x0 < 1 || r.z1 - r.z0 < 1) { say('اسحبي إصبعكِ أبعد قليلًا لترسمي غرفة.', 3000); return; }
   const op = roomOp(r.x0, r.z0, r.x1, r.z1, r.h, tool.room.wall, 'plank');
   if (!op.length) return;
-  commit(op); sfx.place(tool.room.wall); say('غرفة جديدة!', 2500);
+  if (commit(op)) { sfx.place(tool.room.wall); say('غرفة جديدة!', 2500); }
 }
 
 export function initInput() {

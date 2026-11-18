@@ -12,7 +12,7 @@ export const saveLock = { on: false };
 
 // the world on screen as save entries
 export function snapshot() {
-  const list: Entry[] = []; voxels.forEach((v, k) => { if (v.of != null) return; const c = unK(k); const e: Entry = [c[0], c[1], c[2], v.t, v.r || 0]; if (v.c != null || v.o || v.s) e.push(v.c != null ? v.c : null); if (v.o || v.s) e.push(v.o ? v.o[0] : 0, v.o ? v.o[1] : 0); if (v.s) e.push(v.s); list.push(e); });
+  const list: Entry[] = []; voxels.forEach((v, k) => { if (v.of != null) return; const c = unK(k); const e: Entry = [c[0], c[1], c[2], v.t, v.r || 0]; if (v.c != null || v.o || v.s) e.push(v.c != null ? v.c : null); if (v.o || v.s) e.push(v.o ? v.o[0] : 0, v.o ? v.o[1] : 0); if (v.s) e.push(v.s); if (v.w) { while (e.length < 9) e.push(e.length === 5 ? null : 0); e.push(v.w); } list.push(e); });
   const floors: [number, number, number, string][] = []; voxels.forEach((v, k) => { if (v.f) { const c = unK(k); floors.push([c[0], c[1], c[2], v.f]); } });
   return { voxels: list, floors };
 }

@@ -11,8 +11,9 @@ export const G = 20, OFF = (N - G) / 2;
 // o: how far the piece stands from the middle of its cell, along x and z (-.5 to .5). Furniture and other loose
 //    pieces can stand anywhere; the cell is still theirs, so two pieces never share one.
 // s: the size of a loose piece, as a multiple of its normal size. It grows from the floor it stands on.
-export interface Voxel { t: string; r: number; c?: number; of?: number; f?: string; o?: [number, number]; s?: number }
-export type Entry = [number, number, number, string, number, (number | null)?, number?, number?, number?];
+// w: on a friend's island, the visitor who built this piece (absent for the island's own child)
+export interface Voxel { t: string; r: number; c?: number; of?: number; f?: string; o?: [number, number]; s?: number; w?: string }
+export type Entry = [number, number, number, string, number, (number | null)?, number?, number?, number?, string?];
 export const SIZE_MIN = .4, SIZE_MAX = 2.5;
 // every piece can change size except what a building is made of: cubes and walls, windows and doors, floors, roofs and stairs
 export const isSizable = (t: string) => { const T = TYPES[t]; return T.cat !== 'cube' && T.cat !== 'wall' && !T.opening && !T.door && !T.flat && !T.roof && t !== 'floorSlab' && t !== 'stairs'; };
@@ -39,7 +40,8 @@ export const dirty = new Set<string>();
 export const view = { hideRoofs: false, hidden: new Set<number>(), fp: false, sizing: null as { k: number; s: number } | null, drag: null as { k: number; x: number; y: number; z: number } | null };
 
 // wired in main.ts so this module stays free of UI, audio and rendering
-export const hooks = { afterChange: () => {}, syncUndo: () => {}, placed: (_keys: number[]) => {} };
+// mayCommit: asked before each new step, and may refuse it. edited: told after every step taken here, also undo and redo
+export const hooks = { afterChange: () => {}, syncUndo: () => {}, placed: (_keys: number[]) => {}, mayCommit: (_op: Op) => true, edited: (_op: Op, _fwd: boolean) => {} };
 
 /* ---------- pieces larger than one cell ---------- */
 const ONE: Cell = [1, 1, 1];
@@ -116,6 +118,7 @@ function build(list: Entry[]): Map<number, Voxel> {
     if (typeof e[5] === 'number') v.c = e[5];
     if (typeof e[6] === 'number' && isLoose(v.t)) v.o = [Math.max(-.5, Math.min(.5, e[6])), Math.max(-.5, Math.min(.5, e[7] || 0))];
     if (typeof e[8] === 'number' && e[8] > 0 && isSizable(v.t)) v.s = Math.max(SIZE_MIN, Math.min(SIZE_MAX, e[8]));
+    if (typeof e[9] === 'string' && e[9]) v.w = e[9].slice(0, 40);
     const cells = cellsOf(e[0], e[1], e[2], v.t, v.r), ak = K(e[0], e[1], e[2]);
     const over = opening(e);
     if (cells.some(c => { if (!inB(c[0], c[1], c[2])) return true; const o = m.get(K(c[0], c[1], c[2])); return !!o && !(over && (TYPES[o.t].cat === 'cube' || TYPES[o.t].cat === 'wall')); })) return;
@@ -146,12 +149,26 @@ export function applyOp(op: Op, fwd: boolean) {
     if (old) { dirty.add(old.t); if (old.f) dirty.add(old.f); }
     if (v) { voxels.set(e.k, { ...v }); dirty.add(v.t); if (v.f) dirty.add(v.f); } else voxels.delete(e.k);
   });
+  hooks.edited(op, fwd);
   hooks.afterChange();
 }
-export function commit(op: Op) {
+// cells as a friend's device says they are now; not part of this device's undo history
+export function applyCells(list: [number, Voxel | null][]) {
+  dirty.add('fence');
+  const fresh: number[] = [];
+  for (const [k, v] of list) {
+    const old = voxels.get(k);
+    if (old) { dirty.add(old.t); if (old.f) dirty.add(old.f); }
+    if (v) { if (v.of == null && (!old || old.t !== v.t)) fresh.push(k); voxels.set(k, { ...v }); dirty.add(v.t); if (v.f) dirty.add(v.f); } else voxels.delete(k);
+  }
+  hooks.placed(fresh);
+  hooks.afterChange();
+}
+export function commit(op: Op): boolean {
+  if (!hooks.mayCommit(op)) return false;
   // tell the renderer which pieces are new, so they can pop in
   hooks.placed(op.filter(e => e.b && e.b.of == null && (!e.a || e.a.t !== e.b.t)).map(e => e.k));
-  applyOp(op, true); undoStack.push(op); if (undoStack.length > 200) undoStack.shift(); redoStack.length = 0; hooks.syncUndo(); }
+  applyOp(op, true); undoStack.push(op); if (undoStack.length > 200) undoStack.shift(); redoStack.length = 0; hooks.syncUndo(); return true; }
 export function undo(): boolean { const op = undoStack.pop(); if (!op) return false; applyOp(op, false); redoStack.push(op); hooks.syncUndo(); return true; }
 export function redo(): boolean { const op = redoStack.pop(); if (!op) return false; applyOp(op, true); undoStack.push(op); hooks.syncUndo(); return true; }
 // swap the whole world for another one as a single undoable step

@@ -43,6 +43,7 @@ export const famHooks = {
   visit: (_m: any) => {},                     // the bell, an answer, an invitation, goodbye
   voice: (_m: any) => {},                     // voices: connecting (rtc, ice) and who is speaking (talk)
   connected: () => {},                        // the live connection is (back) up
+  build: (_m: any) => {},                     // building together: a visitor's step (edit), or the island as it is (cells)
 };
 
 /* ---------- joining ---------- */
@@ -106,6 +107,7 @@ export function connect() {
     else if (m.t === 'snap') { try { famHooks.snap(m.id, JSON.parse(m.d)); } catch { /* a bad copy is ignored */ } }
     else if (m.t === 'pos' || m.t === 'horn') famHooks.live(m);
     else if (m.t === 'rtc' || m.t === 'talk' || m.t === 'ice') famHooks.voice(m);
+    else if (m.t === 'edit' || m.t === 'cells') famHooks.build(m);
     else if (['knock', 'unknock', 'knockOk', 'knockNo', 'welcome', 'notNow', 'invited', 'bye', 'visitEnd'].includes(m.t)) famHooks.visit(m);
     else if (m.t === 'gone') forget(m.why);
   };
