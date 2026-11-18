@@ -19,13 +19,16 @@ const ERR: Record<string, string> = {
 };
 
 let view: 'gate' | 'home' | 'create' | 'join' | 'confirmLeave' = 'gate';
-let answer = 0, note = '', color = 0, busy = false;
+let answer = 0, note = '', color = 0, busy = false, sum: [number, number] | null = null;
+// digits as typed on any keyboard: Arabic-Indic and Persian ones count too
+const digits = (s: string) => s.replace(/[٠-٩]/g, c => String(c.charCodeAt(0) - 0x660)).replace(/[۰-۹]/g, c => String(c.charCodeAt(0) - 0x6f0)).replace(/s/g, '');
 
 export function initFamily() {
   const btn = $('familyBtn');
   if (!SERVER) { btn.hidden = true; return; }
-  btn.onclick = () => { view = 'gate'; note = ''; render(); $('family').classList.add('open'); };
-  $('family').addEventListener('click', e => { if (e.target === $('family')) close(); });
+  btn.onclick = () => { view = 'gate'; note = ''; sum = null; render(); $('family').classList.add('open'); };
+  // no closing by a tap beside the card: on a phone, the keyboard folding away moves the card, and the tap meant
+  // for «دخول» or «إرسال الطلب» lands beside it. The screen closes only with its own button.
 }
 const close = () => $('family').classList.remove('open');
 // called whenever the family changes; redraws the screen if it is open, and marks the button when someone waits
@@ -49,7 +52,9 @@ function render() {
   const card = $('familyCard');
   let h = '';
   if (view === 'gate') {
-    const a = 6 + Math.floor(Math.random() * 4), b = 6 + Math.floor(Math.random() * 4); answer = a * b;
+    // the same sum stays after a wrong answer, so a slip is simply tried again
+    if (!sum) sum = [6 + Math.floor(Math.random() * 4), 6 + Math.floor(Math.random() * 4)];
+    const [a, b] = sum; answer = a * b;
     h = `<h1>للأهل</h1><p>هذه الصفحة لربط جزيرة الطفلة بجزر العائلة والأصدقاء.</p>
       <label class="field">كم يساوي ${a} × ${b}؟<input id="fGate" inputmode="numeric" autocomplete="off"></label>
       <p class="note">${esc(note)}</p>
@@ -96,7 +101,7 @@ function wire() {
   const on = (id: string, f: () => void) => { const el = document.getElementById(id); if (el) el.onclick = f; };
   on('fClose', close);
   on('fGo', () => {
-    if (Number(($('fGate') as HTMLInputElement).value) === answer) { view = 'home'; note = ''; } else note = 'ليست هذه الإجابة.';
+    if (Number(digits(($('fGate') as HTMLInputElement).value)) === answer) { view = 'home'; note = ''; } else note = 'ليست هذه الإجابة. حاولوا مرة أخرى.';
     render();
   });
   const gate = document.getElementById('fGate') as HTMLInputElement | null;
