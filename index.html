@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>الحديقة السحرية</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Baloo+Bhaijaan+2:wght@500;700;800&display=swap" rel="stylesheet">
+  <script type="module" crossorigin src="./assets/index-DUnr4mI4.js"></script>
+  <link rel="stylesheet" crossorigin href="./assets/index-DfY1_Lwy.css">
+</head>
+<body>
+<div id="app">
+  <canvas id="c"></canvas>
+
+  <div class="top">
+    <button class="chip" id="missionBtn" aria-expanded="false" aria-controls="mission">
+      <span class="count"><svg viewBox="0 0 24 24" fill="#ffc22e"><path d="M12 2l3 6.6 7 .8-5.2 4.8 1.5 7L12 17.6 5.700 21.200l1.500-7L2 9.400l7-.8z"/></svg><span id="starCount">0 / 3</span></span>
+      <span class="title">الحديقة السحرية</span>
+    </button>
+    <div class="actions">
+      <button class="round" id="speakerBtn" hidden aria-label="سمّاعة أصوات الصديقات" aria-pressed="true"><svg viewBox="0 0 24 24"><path d="M4 9.5v5h3.5L12 18.5v-13L7.5 9.5z"/><path d="M15.5 9a4.5 4.5 0 010 6M18 6.5a8 8 0 010 11"/><path class="x" d="M16 9l5 6M21 9l-5 6"/></svg></button>
+      <button class="round" id="visitBtn" hidden aria-label="زوار جزيرتكِ"><svg viewBox="0 0 24 24"><path d="M12 3.5a5.5 5.5 0 015.5 5.5v4.5l2 3H4.5l2-3V9A5.5 5.5 0 0112 3.5z"/><path d="M10 19.5a2 2 0 004 0"/></svg></button>
+      <button class="round" id="familyBtn" aria-label="أرخبيل العائلة، للأهل"><svg viewBox="0 0 24 24"><path d="M2 19c2 0 2-1.5 4-1.5s2 1.5 4 1.5 2-1.5 4-1.5 2 1.5 4 1.5 2-1.5 4-1.5"/><path d="M5 15.5c1-3 4-4.5 7-4.5s6 1.5 7 4.5"/><path d="M12 11V3l5 2.5-5 2.5"/></svg></button>
+      <button class="round" id="nightBtn" aria-label="نهار أو ليل"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="4.200"/><path d="M12 2.500v2.500M12 19v2.500M2.500 12H5M19 12h2.500M5.300 5.300l1.800 1.800M16.900 16.900l1.800 1.800M5.300 18.700l1.800-1.800M16.900 7.100l1.800-1.800"/></svg></button>
+      <button class="round" id="fpBtn" aria-label="منظور عين البنت"><svg viewBox="0 0 24 24"><path d="M2 12s3.600-6.500 10-6.500S22 12 22 12s-3.600 6.500-10 6.500S2 12 2 12z"/><circle cx="12" cy="12" r="2.800"/></svg></button>
+      <button class="round" id="roofBtn" aria-label="إخفاء الأسقف أو إظهارها"><svg viewBox="0 0 24 24"><path d="M3 11.500L12 4l9 7.500"/><path d="M6 10v9h12v-9"/></svg></button>
+      <button class="round" id="soundBtn" aria-label="الصوت"><svg viewBox="0 0 24 24"><path d="M4 9.500v5h3.500L12 18.500v-13L7.500 9.500z"/><path d="M15.500 9a4.500 4.500 0 010 6M18 6.500a8 8 0 010 11"/></svg></button>
+      <button class="round" id="resetBtn" aria-label="بداية جديدة"><svg viewBox="0 0 24 24"><path d="M4 12a8 8 0 108-8H7"/><path d="M10 1L7 4l3 3"/></svg></button>
+    </div>
+  </div>
+
+  <section id="mission" aria-label="المهمة">
+    <h2>المرحلة الأولى</h2>
+    <p>صمّمي حديقة جميلة واجمعي النجوم الثلاث.</p>
+    <ul class="goals" id="goals"></ul>
+  </section>
+
+  <div class="tools">
+    <button class="tool on" id="tBuild"><svg viewBox="0 0 24 24"><path d="M12 3l8 4.500v9L12 21l-8-4.500v-9z"/><path d="M4 7.500l8 4.500 8-4.500M12 12v9"/></svg>بناء</button>
+    <button class="tool" id="tErase"><svg viewBox="0 0 24 24"><path d="M8 20h12M5 15l9-9 5 5-9 9H8z"/><path d="M11 9l5 5"/></svg>إزالة</button>
+    <button class="tool" id="tPaint"><svg viewBox="0 0 24 24"><path d="M12 3c4 5 6 8 6 11a6 6 0 01-12 0c0-3 2-6 6-11z"/></svg>تلوين</button>
+    <button class="tool" id="tTurn"><svg viewBox="0 0 24 24"><path d="M20 12a8 8 0 11-3-6.200"/><path d="M20 4v5h-5"/></svg>تدوير</button>
+    <button class="tool" id="tMove"><svg viewBox="0 0 24 24"><path d="M12 3v18M3 12h18M12 3l-3 3M12 3l3 3M12 21l-3-3M12 21l3-3M3 12l3-3M3 12l3 3M21 12l-3-3M21 12l-3 3"/></svg>تحريك</button>
+    <button class="tool" id="tSize"><svg viewBox="0 0 24 24"><path d="M4 20L20 4M20 4h-6M20 4v6M4 20h6M4 20v-6"/></svg>حجم</button>
+    <button class="tool" id="tWalk"><svg viewBox="0 0 24 24"><circle cx="12" cy="5" r="2.200"/><path d="M12 8v6M12 14l-3 6M12 14l3 6M8 11l4-2 4 2"/></svg>تجوّل</button>
+    <button class="tool" id="tRoom"><svg viewBox="0 0 24 24"><path d="M4 20V5h16v15h-6M4 20h5"/></svg>غرفة</button>
+    <button class="tool" id="tRoof"><svg viewBox="0 0 24 24"><path d="M2.500 13L12 5l9.500 8"/><path d="M5.500 11v8h13v-8"/></svg>سقف</button>
+    <button class="tool" id="tUndo" disabled><svg viewBox="0 0 24 24"><path d="M9 7H15a5 5 0 010 10H8"/><path d="M12 3.500L15.500 7 12 10.500" transform="translate(24 0) scale(-1 1)"/></svg>تراجع</button>
+    <button class="tool" id="tRedo" disabled><svg viewBox="0 0 24 24"><path d="M15 7H9a5 5 0 000 10h7"/><path d="M12 3.500L15.500 7 12 10.500"/></svg>إعادة</button>
+  </div>
+
+  <div class="makko">
+    <button id="makkoBtn" aria-label="اطلبي مساعدة من مكّو">
+      <svg viewBox="0 0 48 48"><rect x="22.500" y="3" width="3" height="7" fill="#8a80a8"/><circle cx="24" cy="4" r="3" fill="#e2477f"/><rect x="6" y="10" width="36" height="28" rx="8" fill="#e9f3ff" stroke="#6a3fa6" stroke-width="2.500"/><rect x="11" y="16" width="26" height="15" rx="6" fill="#2b2140"/><circle cx="18" cy="23" r="3.200" fill="#5fe3ff"/><circle cx="30" cy="23" r="3.200" fill="#5fe3ff"/><path d="M20 28.500q4 2.500 8 0" stroke="#5fe3ff" stroke-width="1.800" fill="none" stroke-linecap="round"/><rect x="1.500" y="19" width="4.500" height="10" rx="2" fill="#6a3fa6"/><rect x="42" y="19" width="4.500" height="10" rx="2" fill="#6a3fa6"/><rect x="16" y="38" width="16" height="6" rx="2" fill="#6a3fa6"/></svg>
+    </button>
+    <div class="bubble" id="bubble" role="status"></div>
+  </div>
+
+  <div class="talkers" id="talkers" hidden aria-live="polite"></div>
+  <button class="mic" id="micBtn" hidden aria-label="اضغطي وتكلمي"><svg viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5.5 11a6.5 6.5 0 0013 0M12 17.5V21M8.5 21h7"/></svg><span class="lock"><svg viewBox="0 0 24 24"><rect x="6" y="11" width="12" height="9" rx="2"/><path d="M9 11V8a3 3 0 016 0v3"/></svg></span></button>
+  <button class="horn" id="hornBtn" hidden aria-label="بوق القارب"><svg viewBox="0 0 24 24"><path d="M3 10v4h3l6 4V6L6 10z"/><path d="M15 9.5c1.2 1.4 1.2 3.6 0 5M18 7c2.4 2.8 2.4 7.2 0 10"/></svg><span>بوق</span></button>
+  <button class="sail" id="sailBtn" hidden><svg viewBox="0 0 24 24"><path d="M12 3v13M12 4l6 10h-6M12 6l-5 8h5"/><path d="M3 17h18l-2.5 3.5h-13z"/></svg><span>أبحري بالقارب</span></button>
+
+  <div class="palette">
+    <div class="tabs" id="tabs"></div>
+    <div class="items" id="items"></div>
+  </div>
+
+  <div id="toast"></div>
+
+  <div class="overlay" id="intro">
+    <div class="card">
+      <h1>الحديقة السحرية</h1>
+      <p>هذه الحديقة لكِ. ازرعي الزهور وابني ما تحبين.</p>
+      <ul class="how">
+        <li>اختاري قطعة من الأسفل ثم اضغطي على الأرض لوضعها.</li>
+        <li>اسحبي بإصبع واحد لتدوير الحديقة، وبإصبعين للتقريب.</li>
+        <li>اضغطي على مكّو إذا احتجتِ مساعدة.</li>
+      </ul>
+      <button class="btn" id="startBtn">ابدئي البناء</button>
+    </div>
+  </div>
+
+  <div class="knock" id="knock" hidden role="alertdialog" aria-labelledby="knockText">
+    <svg viewBox="0 0 24 24"><path d="M12 3.5a5.5 5.5 0 015.5 5.5v4.5l2 3H4.5l2-3V9A5.5 5.5 0 0112 3.5z"/><path d="M10 19.5a2 2 0 004 0"/></svg>
+    <p id="knockText"></p>
+    <div class="row"><button class="btn" id="knockYes">أهلًا</button><button class="btn ghost" id="knockNo">ليس الآن</button></div>
+  </div>
+
+  <div class="overlay" id="visitors">
+    <div class="card family" id="visitorsCard"></div>
+  </div>
+
+  <div class="overlay" id="family">
+    <div class="card family" id="familyCard"></div>
+  </div>
+
+  <div class="overlay" id="confirm">
+    <div class="card">
+      <h1>بداية جديدة؟</h1>
+      <p>اختاري كيف تبدئين. نجومكِ تبقى معكِ، وزر التراجع يعيد حديقتكِ.</p>
+      <div class="row">
+        <button class="btn" id="confirmYes">حديقة البداية</button>
+        <button class="btn" id="confirmEmpty">أرض فارغة</button>
+        <button class="btn ghost" id="confirmNo">لا، أكملي حديقتي</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="overlay" id="win">
+    <div class="card">
+      <div class="bigstars"><svg viewBox="0 0 24 24"><path d="M12 2l3 6.600 7 .8-5.200 4.800 1.500 7L12 17.600 5.700 21.200l1.500-7L2 9.400l7-.8z"/></svg><svg viewBox="0 0 24 24"><path d="M12 2l3 6.600 7 .8-5.200 4.800 1.500 7L12 17.600 5.700 21.200l1.500-7L2 9.400l7-.8z"/></svg><svg viewBox="0 0 24 24"><path d="M12 2l3 6.600 7 .8-5.200 4.800 1.500 7L12 17.600 5.700 21.200l1.500-7L2 9.400l7-.8z"/></svg></div>
+      <h1>حديقتكِ اكتملت!</h1>
+      <p>جمعتِ النجوم الثلاث وفتحتِ كل القطع. الحديقة لكِ، أكملي البناء كما تحبين.</p>
+      <button class="btn" id="winBtn">أكملي البناء</button>
+    </div>
+  </div>
+</div>
+
+</body>
+</html>
