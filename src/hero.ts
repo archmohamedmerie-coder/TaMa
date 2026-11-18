@@ -24,12 +24,24 @@ function limb(parts: THREE.BufferGeometry[], pivotY: number) {
   return m;
 }
 const hero = new THREE.Group();
-const body = new THREE.Mesh(M([
-  b(.3, .28, .2, DRESS, 0, .22, 0), b(.38, .12, .26, DRESS2, 0, .2, 0),
+// her body with the dress in one colour: the skirt a shade darker. In a family each girl wears her own flag colour
+const shade = (c: number, k: number) => (Math.round(((c >> 16) & 255) * k) << 16) | (Math.round(((c >> 8) & 255) * k) << 8) | Math.round((c & 255) * k);
+const bodyGeo = (dress: number, skirt: number) => M([
+  b(.3, .28, .2, dress, 0, .22, 0), b(.38, .12, .26, skirt, 0, .2, 0),
   b(.28, .26, .26, SKIN, 0, .5, 0), b(.3, .08, .28, HAIR, 0, .74, 0), b(.3, .24, .06, HAIR, 0, .52, -.13),
   b(.08, .2, .08, HAIR, .19, .46, -.02), b(.08, .2, .08, HAIR, -.19, .46, -.02), b(.08, .06, .06, 0xffc22e, .19, .66, -.02), b(.08, .06, .06, 0xffc22e, -.19, .66, -.02),
-  b(.04, .05, .02, DARK, .07, .6, .135), b(.04, .05, .02, DARK, -.07, .6, .135), b(.1, .02, .02, 0xc9584c, 0, .54, .135)]), baseMat);
+  b(.04, .05, .02, DARK, .07, .6, .135), b(.04, .05, .02, DARK, -.07, .6, .135), b(.1, .02, .02, 0xc9584c, 0, .54, .135)]);
+const body = new THREE.Mesh(bodyGeo(DRESS, DRESS2), baseMat);
 body.castShadow = true;
+// dress a girl (hers, or a copy for a friend) in a colour; null gives back the pink dress
+export function dressGirl(g: THREE.Object3D, color: number | null) {
+  const m = g.children[0] as THREE.Mesh, old = m.geometry;
+  m.geometry = color == null ? bodyGeo(DRESS, DRESS2) : bodyGeo(color, shade(color, .82));
+  // the first geometry may be shared with copies; only one made here is let go
+  if ((old as any).dressed) old.dispose();
+  (m.geometry as any).dressed = true;
+}
+export const dressHero = (color: number | null) => dressGirl(hero, color);
 const leg = (x: number) => limb([b(.1, .22, .1, SKIN, x, 0, 0), b(.12, .06, .16, SHOE, x, 0, .02)], .24);
 const arm = (x: number) => limb([b(.08, .24, .08, SKIN, x, .24, 0)], .48);
 const legL = leg(.08), legR = leg(-.08), armL = arm(.2), armR = arm(-.2);

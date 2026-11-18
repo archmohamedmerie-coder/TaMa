@@ -9,14 +9,14 @@ import { checkGoals, stats } from './mission';
 import { $, buildPalette, syncUndo, initUI } from './ui';
 import { updateSea } from './sea';
 import { saveHooks, snapshot } from './save';
-import { fam, famHooks, connect, shareIsland } from './net';
+import { fam, famHooks, connect, shareIsland, COLORS } from './net';
 import { syncIslands, islandArrived, copyOf, here } from './islands';
 import { initFamily, familyChanged } from './family';
 import { initBoats, updateBoats, liveNews, remoteBoats } from './boats';
 import { visiting, visitNews, visitStateChanged, familyGone, initVisitors } from './visit';
 import { buildNews, buildersChanged } from './together';
 import { initVoice, voiceNews, voiceStateChanged, voiceConnected, voiceDebug } from './voice';
-import { initHero, settleHero, updateHero, heroCell, setFinger, clearFinger } from './hero';
+import { dressHero, initHero, settleHero, updateHero, heroCell, setFinger, clearFinger } from './hero';
 
 // on a friend's island her stars do not count and nothing is saved (save.ts holds the lock)
 hooks.afterChange = () => { if (!visiting()) checkGoals(false); updateLife(); settleHero(); refreshInside(); save(); };
@@ -30,7 +30,9 @@ initFamily();
 
 /* ---------- the family archipelago ---------- */
 saveHooks.saved = shareIsland;
-famHooks.state = () => { syncIslands(); familyChanged(); visitStateChanged(); voiceStateChanged(); buildersChanged(); };
+// in a family she wears her flag colour, so friends know her at a glance
+const dressed = () => dressHero(fam.status === 'none' ? null : COLORS[fam.color] ?? COLORS[0]);
+famHooks.state = () => { dressed(); syncIslands(); familyChanged(); visitStateChanged(); voiceStateChanged(); buildersChanged(); };
 famHooks.build = buildNews;
 famHooks.voice = voiceNews;
 famHooks.connected = voiceConnected;
@@ -42,6 +44,7 @@ famHooks.snap = islandArrived;
 famHooks.live = liveNews;
 initBoats();
 syncIslands();
+dressed();
 connect();
 
 /* ---------- start ---------- */

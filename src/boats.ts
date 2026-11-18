@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { world, reduceMotion, baseMat } from './render';
 import { boat, boatGeo, wave, WATER, DOCK } from './sea';
-import { isSailing, girlModel, GIRL_LIFT, heroFeet } from './hero';
+import { isSailing, girlModel, GIRL_LIFT, heroFeet, dressGirl } from './hero';
 import { tool } from './input';
 import { fam, sendLive, COLORS } from './net';
 import { nameSprite, writeName, offsetOf, myPlace, setMoored } from './islands';
@@ -36,7 +36,7 @@ function remoteFor(id: string): Remote | null {
     remotes.set(id, r);
   }
   if (r.color !== m.color || r.name !== m.name) {
-    if (r.color !== m.color) { r.hull.geometry.dispose(); r.hull.geometry = boatGeo(COLORS[m.color] ?? COLORS[0]); }
+    if (r.color !== m.color) { r.hull.geometry.dispose(); r.hull.geometry = boatGeo(COLORS[m.color] ?? COLORS[0]); dressGirl(r.rider, COLORS[m.color] ?? COLORS[0]); dressGirl(r.walker, COLORS[m.color] ?? COLORS[0]); }
     r.color = m.color; r.name = m.name; writeName(r.label, m.name, COLORS[m.color] ?? COLORS[0], false);
   }
   return r;
